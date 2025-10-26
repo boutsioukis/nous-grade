@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Nous-Grade Tool",
+  "version": "1.0.0",
+  "description": "AI-powered grading assistant for university professors",
+  
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content-script.js"],
+      "css": ["content/content-script.css"]
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Nous-Grade Tool"
+  }
+}

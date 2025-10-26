@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nous-Grade Tool</title>
+    <style>
+        body {
+            width: 300px;
+            height: 200px;
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .button:hover {
+            background: #45a049;
+        }
+        
+        .status {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Nous-Grade Tool</h1>
+    </div>
+    
+    <button id="inject-hello" class="button">
+        Open Grading UI
+    </button>
+    
+    <button id="remove-hello" class="button">
+        Close Grading UI
+    </button>
+    
+    <div id="status" class="status">
+        Ready to grade!
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>
