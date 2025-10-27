@@ -5,7 +5,8 @@ module.exports = {
   entry: {
     'background/service-worker': './src/background/service-worker.ts',
     'content/content-script': './src/content/content-script.ts',
-    'popup/popup': './src/popup/popup.tsx'
+    'popup/popup': './src/popup/popup.tsx',
+    'offscreen/offscreen-document': './src/offscreen/offscreen-document.ts'
   },
   
   output: {
@@ -37,6 +38,7 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'src/popup/popup.html', to: 'popup/popup.html' },
+        { from: 'src/offscreen/offscreen-document.html', to: 'offscreen/offscreen-document.html' },
         { from: 'src/content/content-script.css', to: 'content/content-script.css' },
         { from: 'src/components/GradingOverlay.css', to: 'components/GradingOverlay.css' },
         { from: 'icons', to: 'icons', noErrorOnMissing: true }

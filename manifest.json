@@ -6,7 +6,11 @@
   
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "desktopCapture",
+    "offscreen",
+    "storage",
+    "background"
   ],
   
   "host_permissions": [
