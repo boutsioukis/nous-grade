@@ -102,27 +102,14 @@ async function processStreamInPopup(streamId: string, captureType: 'student' | '
       setTimeout(() => reject(new Error('Video loading timeout')), 10000);
     });
 
-    // Create canvas to capture frame
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    // Show screen selector for region selection
+    const imageData = await showScreenSelector(video, captureType);
     
-    if (!ctx) {
-      throw new Error('Failed to get canvas context');
-    }
-
-    // Draw video frame to canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Convert to base64 image data
-    const imageData = canvas.toDataURL('image/png');
-    console.log('🟡 Image captured, data length:', imageData.length);
+    console.log('🟡 Image captured with selection, data length:', imageData.length);
 
     // Clean up
     stream.getTracks().forEach(track => track.stop());
     video.remove();
-    canvas.remove();
 
     return imageData;
 
@@ -130,6 +117,29 @@ async function processStreamInPopup(streamId: string, captureType: 'student' | '
     console.error('🟡 Error processing stream in popup:', error);
     throw error;
   }
+}
+
+// Show screen selector overlay
+async function showScreenSelector(video: HTMLVideoElement, captureType: 'student' | 'professor'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Import the screen selector dynamically
+    import('../components/ScreenSelector').then(({ screenSelector }) => {
+      screenSelector.showSelector(
+        video,
+        (selectionArea, croppedImageData) => {
+          console.log('🟡 Screen selection completed for:', captureType, selectionArea);
+          resolve(croppedImageData);
+        },
+        () => {
+          console.log('🟡 Screen selection cancelled for:', captureType);
+          reject(new Error('Screen selection cancelled by user'));
+        }
+      );
+    }).catch(error => {
+      console.error('🟡 Error loading screen selector:', error);
+      reject(error);
+    });
+  });
 }
 
 // Handle desktop capture directly in the popup
@@ -653,18 +663,47 @@ function injectGradingUIFromPopup() {
     }
   });
   
-  document.getElementById('start-grading')?.addEventListener('click', () => {
+  document.getElementById('start-grading')?.addEventListener('click', async () => {
     const button = document.getElementById('start-grading') as HTMLButtonElement;
     if (button) {
       button.textContent = 'Processing...';
       button.style.background = '#ccc';
       button.disabled = true;
       
-      // Simulate grading process
-      setTimeout(() => {
-        button.textContent = 'Grading Complete!';
-        button.style.background = '#4CAF50';
-      }, 2000);
+      try {
+        // Get the markdown content from the UI
+        const studentMarkdown = document.getElementById('student-markdown')?.textContent || '';
+        const professorMarkdown = document.getElementById('professor-markdown')?.textContent || '';
+        
+        if (!studentMarkdown || !professorMarkdown) {
+          throw new Error('Both student and professor answers must be converted to markdown first');
+        }
+        
+        // Send grading request to service worker via content script
+        console.log('Sending grading request to service worker...');
+        
+        // Create a custom event to communicate with content script
+        const gradingEvent = new CustomEvent('nous-grade-grading-request', {
+          detail: {
+            type: 'PROCESS_GRADING',
+            studentMarkdown: studentMarkdown,
+            professorMarkdown: professorMarkdown
+          }
+        });
+        
+        document.dispatchEvent(gradingEvent);
+        
+        console.log('Grading request sent successfully');
+        
+      } catch (error) {
+        console.error('Error starting grading process:', error);
+        button.textContent = 'Error - Try Again';
+        button.style.background = '#f44336';
+        button.disabled = false;
+        
+        // Show error message
+        alert(`Grading failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   });
   

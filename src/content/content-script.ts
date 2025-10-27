@@ -56,6 +56,30 @@ document.addEventListener('nous-grade-capture-request', (event: Event) => {
   });
 });
 
+// Listen for grading requests from injected UI
+document.addEventListener('nous-grade-grading-request', (event: Event) => {
+  const customEvent = event as CustomEvent;
+  console.log('🔵 Content script received grading request:', customEvent.detail);
+  
+  // Check if extension context is still valid
+  if (!chrome.runtime?.id) {
+    console.error('Extension context invalidated - extension may have been reloaded');
+    return;
+  }
+  
+  // Forward the grading request to the service worker
+  console.log('🔵 Forwarding grading request to service worker:', customEvent.detail);
+  chrome.runtime.sendMessage({
+    type: customEvent.detail.type,
+    studentMarkdown: customEvent.detail.studentMarkdown,
+    professorMarkdown: customEvent.detail.professorMarkdown
+  }).then(response => {
+    console.log('🔵 Grading request service worker response:', response);
+  }).catch(error => {
+    console.error('🔴 Error forwarding grading request:', error);
+  });
+});
+
 // Listen for messages from the service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Content script received message:', message);
