@@ -1,5 +1,5 @@
-// Screen region selection component for cropping captured images
-// Provides an overlay interface for selecting specific areas of the screen
+// Screen Selector Component for Region Selection
+// Implements snipping tool functionality in offscreen document
 
 export interface SelectionArea {
   x: number;
@@ -8,8 +8,13 @@ export interface SelectionArea {
   height: number;
 }
 
+export interface ScreenSelectorOptions {
+  onComplete: (selectionArea: SelectionArea, croppedImageData: string) => void;
+  onCancel: () => void;
+  captureType: 'student' | 'professor';
+}
+
 export class ScreenSelector {
-  private overlay: HTMLDivElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private video: HTMLVideoElement | null = null;
@@ -18,61 +23,261 @@ export class ScreenSelector {
   private startY: number = 0;
   private currentX: number = 0;
   private currentY: number = 0;
-  private onSelectionComplete: ((area: SelectionArea, croppedImageData: string) => void) | null = null;
-  private onCancel: (() => void) | null = null;
+  private options: ScreenSelectorOptions | null = null;
+  private originalImageData: ImageData | null = null;
 
   /**
-   * Show the screen selector overlay with the video stream
+   * Show the screen selector overlay
    */
-  async showSelector(
-    videoElement: HTMLVideoElement,
-    onComplete: (area: SelectionArea, croppedImageData: string) => void,
-    onCancel: () => void
-  ): Promise<void> {
-    console.log('🟡 Showing screen selector overlay');
+  showSelector(video: HTMLVideoElement, options: ScreenSelectorOptions): void {
+    console.log('🟠 Starting screen selector for:', options.captureType);
     
-    this.video = videoElement;
-    this.onSelectionComplete = onComplete;
-    this.onCancel = onCancel;
-
-    // Create overlay
-    this.createOverlay();
+    this.video = video;
+    this.options = options;
     
-    // Create canvas for drawing
-    this.createCanvas();
+    // Create full-screen canvas overlay
+    this.createCanvasOverlay();
     
-    // Draw the current video frame
+    // Draw the video frame onto the canvas
     this.drawVideoFrame();
     
-    // Set up event listeners
-    this.setupEventListeners();
+    // Add event listeners for selection
+    this.addEventListeners();
+    
+    // Show instructions
+    this.showInstructions();
   }
 
   /**
-   * Create the overlay container
+   * Create full-screen canvas overlay
    */
-  private createOverlay(): void {
-    this.overlay = document.createElement('div');
-    this.overlay.id = 'nous-grade-screen-selector';
-    this.overlay.style.cssText = `
+  private createCanvasOverlay(): void {
+    // Create canvas element
+    this.canvas = document.createElement('canvas');
+    this.canvas.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(0, 0, 0, 0.8);
-      z-index: 10001;
+      z-index: 999999;
       cursor: crosshair;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      background: rgba(0, 0, 0, 0.1);
     `;
+    
+    // Set canvas size to match screen
+    this.canvas.width = window.screen.width;
+    this.canvas.height = window.screen.height;
+    
+    // Get 2D context
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) {
+      throw new Error('Failed to get canvas 2D context');
+    }
+    
+    // Add canvas to document
+    document.body.appendChild(this.canvas);
+    
+    console.log('🟠 Canvas overlay created:', this.canvas.width, 'x', this.canvas.height);
+  }
 
-    // Add instructions
+  /**
+   * Draw video frame onto canvas
+   */
+  private drawVideoFrame(): void {
+    if (!this.canvas || !this.ctx || !this.video) {
+      throw new Error('Canvas or video not available');
+    }
+
+    // Draw the video frame to fill the entire canvas
+    this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+    
+    // Store the original image data for restoration during selection
+    this.originalImageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+    
+    console.log('🟠 Video frame drawn to canvas');
+  }
+
+  /**
+   * Add mouse event listeners for selection
+   */
+  private addEventListeners(): void {
+    if (!this.canvas) return;
+
+    // Mouse down - start selection
+    this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    
+    // Mouse move - update selection
+    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    
+    // Mouse up - complete selection
+    this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+    
+    // Escape key - cancel selection
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    
+    console.log('🟠 Event listeners added for selection');
+  }
+
+  /**
+   * Handle mouse down event
+   */
+  private handleMouseDown(event: MouseEvent): void {
+    this.isSelecting = true;
+    
+    // Get canvas-relative coordinates
+    const rect = this.canvas!.getBoundingClientRect();
+    this.startX = event.clientX - rect.left;
+    this.startY = event.clientY - rect.top;
+    this.currentX = this.startX;
+    this.currentY = this.startY;
+    
+    console.log('🟠 Selection started at:', this.startX, this.startY);
+  }
+
+  /**
+   * Handle mouse move event
+   */
+  private handleMouseMove(event: MouseEvent): void {
+    if (!this.isSelecting || !this.canvas || !this.ctx || !this.originalImageData) return;
+    
+    // Get current mouse position
+    const rect = this.canvas.getBoundingClientRect();
+    this.currentX = event.clientX - rect.left;
+    this.currentY = event.clientY - rect.top;
+    
+    // Redraw the original image
+    this.ctx.putImageData(this.originalImageData, 0, 0);
+    
+    // Draw selection rectangle
+    this.drawSelectionRectangle();
+  }
+
+  /**
+   * Handle mouse up event
+   */
+  private handleMouseUp(event: MouseEvent): void {
+    if (!this.isSelecting) return;
+    
+    this.isSelecting = false;
+    
+    // Get final coordinates
+    const rect = this.canvas!.getBoundingClientRect();
+    this.currentX = event.clientX - rect.left;
+    this.currentY = event.clientY - rect.top;
+    
+    // Calculate selection area
+    const selectionArea = this.getSelectionArea();
+    
+    console.log('🟠 Selection completed:', selectionArea);
+    
+    // Crop the selected region
+    this.cropSelection(selectionArea);
+  }
+
+  /**
+   * Handle keyboard events
+   */
+  private handleKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      console.log('🟠 Selection cancelled by user');
+      this.cleanup();
+      this.options?.onCancel();
+    }
+  }
+
+  /**
+   * Draw selection rectangle
+   */
+  private drawSelectionRectangle(): void {
+    if (!this.ctx) return;
+    
+    const selectionArea = this.getSelectionArea();
+    
+    // Draw selection rectangle
+    this.ctx.strokeStyle = '#2196F3';
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([5, 5]);
+    this.ctx.strokeRect(selectionArea.x, selectionArea.y, selectionArea.width, selectionArea.height);
+    
+    // Draw semi-transparent overlay outside selection
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    this.ctx.fillRect(0, 0, this.canvas!.width, selectionArea.y); // Top
+    this.ctx.fillRect(0, selectionArea.y, selectionArea.x, selectionArea.height); // Left
+    this.ctx.fillRect(selectionArea.x + selectionArea.width, selectionArea.y, 
+                     this.canvas!.width - (selectionArea.x + selectionArea.width), selectionArea.height); // Right
+    this.ctx.fillRect(0, selectionArea.y + selectionArea.height, this.canvas!.width, 
+                     this.canvas!.height - (selectionArea.y + selectionArea.height)); // Bottom
+  }
+
+  /**
+   * Get normalized selection area
+   */
+  private getSelectionArea(): SelectionArea {
+    const x = Math.min(this.startX, this.currentX);
+    const y = Math.min(this.startY, this.currentY);
+    const width = Math.abs(this.currentX - this.startX);
+    const height = Math.abs(this.currentY - this.startY);
+    
+    return { x, y, width, height };
+  }
+
+  /**
+   * Crop the selected region
+   */
+  private cropSelection(selectionArea: SelectionArea): void {
+    if (!this.ctx || !this.originalImageData) {
+      console.error('🔴 Cannot crop: missing context or image data');
+      return;
+    }
+    
+    // Ensure minimum selection size
+    if (selectionArea.width < 10 || selectionArea.height < 10) {
+      console.log('🟠 Selection too small, using full screen');
+      selectionArea = {
+        x: 0,
+        y: 0,
+        width: this.canvas!.width,
+        height: this.canvas!.height
+      };
+    }
+    
+    // Create temporary canvas for cropping
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = selectionArea.width;
+    cropCanvas.height = selectionArea.height;
+    const cropCtx = cropCanvas.getContext('2d');
+    
+    if (!cropCtx) {
+      console.error('🔴 Failed to get crop canvas context');
+      return;
+    }
+    
+    // Draw the selected region onto the crop canvas
+    cropCtx.drawImage(
+      this.canvas!,
+      selectionArea.x, selectionArea.y, selectionArea.width, selectionArea.height,
+      0, 0, selectionArea.width, selectionArea.height
+    );
+    
+    // Convert to base64 image data
+    const croppedImageData = cropCanvas.toDataURL('image/png');
+    
+    console.log('🟠 Region cropped successfully, data length:', croppedImageData.length);
+    
+    // Clean up and call completion callback
+    this.cleanup();
+    this.options?.onComplete(selectionArea, croppedImageData);
+  }
+
+  /**
+   * Show selection instructions
+   */
+  private showInstructions(): void {
     const instructions = document.createElement('div');
+    instructions.id = 'screen-selector-instructions';
     instructions.style.cssText = `
-      position: absolute;
+      position: fixed;
       top: 20px;
       left: 50%;
       transform: translateX(-50%);
@@ -81,297 +286,56 @@ export class ScreenSelector {
       padding: 16px 24px;
       border-radius: 8px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 16px;
-      font-weight: 600;
-      text-align: center;
-      z-index: 10002;
-    `;
-    instructions.innerHTML = `
-      <div>Select the area to capture</div>
-      <div style="font-size: 14px; font-weight: normal; margin-top: 8px; opacity: 0.8;">
-        Click and drag to select • Press ESC to cancel
-      </div>
-    `;
-
-    // Add cancel button
-    const cancelButton = document.createElement('button');
-    cancelButton.textContent = '× Cancel';
-    cancelButton.style.cssText = `
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: #f44336;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 12px 20px;
       font-size: 14px;
       font-weight: 600;
-      cursor: pointer;
-      z-index: 10002;
+      z-index: 1000000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      text-align: center;
     `;
-    cancelButton.addEventListener('click', () => this.cancel());
-
-    this.overlay.appendChild(instructions);
-    this.overlay.appendChild(cancelButton);
-    document.body.appendChild(this.overlay);
-  }
-
-  /**
-   * Create the canvas for drawing the video frame and selection
-   */
-  private createCanvas(): void {
-    if (!this.video || !this.overlay) return;
-
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    this.canvas.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      cursor: crosshair;
+    
+    instructions.innerHTML = `
+      <div style="margin-bottom: 8px;">📸 Select the area you want to capture</div>
+      <div style="font-size: 12px; opacity: 0.8;">Click and drag to select • Press ESC to cancel</div>
     `;
-
-    this.ctx = this.canvas.getContext('2d');
-    this.overlay.appendChild(this.canvas);
-  }
-
-  /**
-   * Draw the current video frame onto the canvas
-   */
-  private drawVideoFrame(): void {
-    if (!this.ctx || !this.video || !this.canvas) return;
-
-    // Calculate scaling to fit video in viewport while maintaining aspect ratio
-    const videoAspect = this.video.videoWidth / this.video.videoHeight;
-    const canvasAspect = this.canvas.width / this.canvas.height;
-
-    let drawWidth, drawHeight, offsetX, offsetY;
-
-    if (videoAspect > canvasAspect) {
-      // Video is wider than canvas
-      drawWidth = this.canvas.width;
-      drawHeight = this.canvas.width / videoAspect;
-      offsetX = 0;
-      offsetY = (this.canvas.height - drawHeight) / 2;
-    } else {
-      // Video is taller than canvas
-      drawWidth = this.canvas.height * videoAspect;
-      drawHeight = this.canvas.height;
-      offsetX = (this.canvas.width - drawWidth) / 2;
-      offsetY = 0;
-    }
-
-    // Clear canvas
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-    // Draw video frame
-    this.ctx.drawImage(this.video, offsetX, offsetY, drawWidth, drawHeight);
-
-    // Store the video drawing parameters for later use
-    (this.canvas as any)._videoDrawParams = { offsetX, offsetY, drawWidth, drawHeight };
-  }
-
-  /**
-   * Set up mouse event listeners for selection
-   */
-  private setupEventListeners(): void {
-    if (!this.canvas) return;
-
-    // Mouse down - start selection
-    this.canvas.addEventListener('mousedown', (e) => {
-      this.isSelecting = true;
-      const rect = this.canvas!.getBoundingClientRect();
-      this.startX = e.clientX - rect.left;
-      this.startY = e.clientY - rect.top;
-      this.currentX = this.startX;
-      this.currentY = this.startY;
-    });
-
-    // Mouse move - update selection
-    this.canvas.addEventListener('mousemove', (e) => {
-      if (!this.isSelecting) return;
-      
-      const rect = this.canvas!.getBoundingClientRect();
-      this.currentX = e.clientX - rect.left;
-      this.currentY = e.clientY - rect.top;
-      
-      this.redrawCanvas();
-    });
-
-    // Mouse up - complete selection
-    this.canvas.addEventListener('mouseup', () => {
-      if (this.isSelecting) {
-        this.completeSelection();
+    
+    document.body.appendChild(instructions);
+    
+    // Remove instructions after 3 seconds
+    setTimeout(() => {
+      const instructionsEl = document.getElementById('screen-selector-instructions');
+      if (instructionsEl) {
+        instructionsEl.remove();
       }
-    });
-
-    // Keyboard events
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        this.cancel();
-      }
-    });
+    }, 3000);
   }
 
   /**
-   * Redraw the canvas with the current selection
-   */
-  private redrawCanvas(): void {
-    if (!this.ctx || !this.canvas) return;
-
-    // Redraw the video frame
-    this.drawVideoFrame();
-
-    // Draw selection rectangle
-    const selectionX = Math.min(this.startX, this.currentX);
-    const selectionY = Math.min(this.startY, this.currentY);
-    const selectionWidth = Math.abs(this.currentX - this.startX);
-    const selectionHeight = Math.abs(this.currentY - this.startY);
-
-    // Draw semi-transparent overlay everywhere except selection
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-    // Clear the selection area (make it fully visible)
-    this.ctx.clearRect(selectionX, selectionY, selectionWidth, selectionHeight);
-    
-    // Redraw the video in the selection area
-    const params = (this.canvas as any)._videoDrawParams;
-    if (params && this.video) {
-      this.ctx.save();
-      this.ctx.beginPath();
-      this.ctx.rect(selectionX, selectionY, selectionWidth, selectionHeight);
-      this.ctx.clip();
-      this.ctx.drawImage(this.video, params.offsetX, params.offsetY, params.drawWidth, params.drawHeight);
-      this.ctx.restore();
-    }
-
-    // Draw selection border
-    this.ctx.strokeStyle = '#2196F3';
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(selectionX, selectionY, selectionWidth, selectionHeight);
-
-    // Draw selection info
-    this.ctx.fillStyle = '#2196F3';
-    this.ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    this.ctx.fillText(
-      `${Math.round(selectionWidth)} × ${Math.round(selectionHeight)}`,
-      selectionX,
-      selectionY - 8
-    );
-  }
-
-  /**
-   * Complete the selection and crop the image
-   */
-  private completeSelection(): void {
-    if (!this.canvas || !this.video || !this.onSelectionComplete) return;
-
-    const selectionX = Math.min(this.startX, this.currentX);
-    const selectionY = Math.min(this.startY, this.currentY);
-    const selectionWidth = Math.abs(this.currentX - this.startX);
-    const selectionHeight = Math.abs(this.currentY - this.startY);
-
-    // Validate selection size
-    if (selectionWidth < 10 || selectionHeight < 10) {
-      alert('Selection too small. Please select a larger area.');
-      this.isSelecting = false;
-      return;
-    }
-
-    console.log('🟡 Cropping selected area:', { selectionX, selectionY, selectionWidth, selectionHeight });
-
-    // Create a new canvas for the cropped image
-    const croppedCanvas = document.createElement('canvas');
-    croppedCanvas.width = selectionWidth;
-    croppedCanvas.height = selectionHeight;
-    const croppedCtx = croppedCanvas.getContext('2d');
-
-    if (!croppedCtx) {
-      console.error('Failed to get cropped canvas context');
-      return;
-    }
-
-    // Get the video drawing parameters
-    const params = (this.canvas as any)._videoDrawParams;
-    if (!params) {
-      console.error('Video drawing parameters not found');
-      return;
-    }
-
-    // Calculate the source coordinates in the original video
-    const scaleX = this.video.videoWidth / params.drawWidth;
-    const scaleY = this.video.videoHeight / params.drawHeight;
-    
-    const sourceX = (selectionX - params.offsetX) * scaleX;
-    const sourceY = (selectionY - params.offsetY) * scaleY;
-    const sourceWidth = selectionWidth * scaleX;
-    const sourceHeight = selectionHeight * scaleY;
-
-    // Draw the cropped portion
-    croppedCtx.drawImage(
-      this.video,
-      sourceX, sourceY, sourceWidth, sourceHeight,
-      0, 0, selectionWidth, selectionHeight
-    );
-
-    // Convert to base64
-    const croppedImageData = croppedCanvas.toDataURL('image/png');
-    
-    console.log('🟡 Cropped image data length:', croppedImageData.length);
-
-    // Create selection area object
-    const selectionArea: SelectionArea = {
-      x: selectionX,
-      y: selectionY,
-      width: selectionWidth,
-      height: selectionHeight
-    };
-
-    // Call completion callback
-    this.onSelectionComplete(selectionArea, croppedImageData);
-
-    // Clean up
-    this.cleanup();
-  }
-
-  /**
-   * Cancel the selection
-   */
-  private cancel(): void {
-    console.log('🟡 Screen selection cancelled');
-    
-    if (this.onCancel) {
-      this.onCancel();
-    }
-    
-    this.cleanup();
-  }
-
-  /**
-   * Clean up the overlay and event listeners
+   * Clean up resources and remove elements
    */
   private cleanup(): void {
-    if (this.overlay) {
-      this.overlay.remove();
-      this.overlay = null;
+    // Remove canvas
+    if (this.canvas) {
+      this.canvas.remove();
+      this.canvas = null;
     }
     
-    this.canvas = null;
+    // Remove instructions
+    const instructions = document.getElementById('screen-selector-instructions');
+    if (instructions) {
+      instructions.remove();
+    }
+    
+    // Remove event listeners
+    document.removeEventListener('keydown', this.handleKeyDown.bind(this));
+    
+    // Reset state
     this.ctx = null;
     this.video = null;
     this.isSelecting = false;
-    this.onSelectionComplete = null;
-    this.onCancel = null;
+    this.originalImageData = null;
+    this.options = null;
     
-    // Remove keyboard event listener
-    document.removeEventListener('keydown', this.cancel);
-    
-    console.log('🟡 Screen selector cleaned up');
+    console.log('🟠 Screen selector cleanup completed');
   }
 }
 

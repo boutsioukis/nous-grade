@@ -17,6 +17,23 @@ export interface MessageTypes {
   };
   'INJECT_GRADING_UI': {};
   'REMOVE_GRADING_UI': {};
+  'SHOW_SCREEN_SELECTOR': {
+    screenImageData: string;
+    captureType: 'student' | 'professor';
+  };
+  'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT': {
+    imageData: string;
+    captureType: 'student' | 'professor';
+    selectionArea: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+  };
+  'CAPTURE_CANCELLED': {
+    captureType: 'student' | 'professor';
+  };
 }
 
 export interface GradingResult {

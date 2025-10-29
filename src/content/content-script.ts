@@ -4,8 +4,15 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import GradingOverlay from '../components/GradingOverlay';
+import { contentScriptScreenSelector } from '../components/ContentScriptScreenSelector';
 
 console.log('Nous-Grade Content Script loaded on:', window.location.href);
+
+// Add a global test listener to debug event flow
+document.addEventListener('nous-grade-capture-result', (event) => {
+  console.log('🟡 GLOBAL: nous-grade-capture-result event detected:', event);
+  console.log('🟡 GLOBAL: Event detail:', (event as CustomEvent).detail);
+});
 
 let gradingUI: HTMLElement | null = null;
 let reactRoot: any = null;
@@ -56,6 +63,39 @@ document.addEventListener('nous-grade-capture-request', (event: Event) => {
   });
 });
 
+// Listen for markdown conversion requests from injected UI
+document.addEventListener('nous-grade-convert-to-markdown', (event: Event) => {
+  const customEvent = event as CustomEvent;
+  console.log('🔵 Content script received markdown conversion request:', customEvent.detail);
+  
+  // Check if extension context is still valid
+  if (!chrome.runtime?.id) {
+    console.error('Extension context invalidated - extension may have been reloaded');
+    return;
+  }
+  
+  // Forward the conversion request to the service worker for both images
+  chrome.runtime.sendMessage({
+    type: 'CONVERT_IMAGE_TO_MARKDOWN',
+    imageData: customEvent.detail.studentImageData,
+    imageType: 'student'
+  }).then(response => {
+    console.log('🔵 Student markdown conversion response:', response);
+  }).catch(error => {
+    console.error('🔴 Error converting student image:', error);
+  });
+
+  chrome.runtime.sendMessage({
+    type: 'CONVERT_IMAGE_TO_MARKDOWN',
+    imageData: customEvent.detail.professorImageData,
+    imageType: 'professor'
+  }).then(response => {
+    console.log('🔵 Professor markdown conversion response:', response);
+  }).catch(error => {
+    console.error('🔴 Error converting professor image:', error);
+  });
+});
+
 // Listen for grading requests from injected UI
 document.addEventListener('nous-grade-grading-request', (event: Event) => {
   const customEvent = event as CustomEvent;
@@ -68,11 +108,9 @@ document.addEventListener('nous-grade-grading-request', (event: Event) => {
   }
   
   // Forward the grading request to the service worker
-  console.log('🔵 Forwarding grading request to service worker:', customEvent.detail);
+  console.log('🔵 Forwarding grading request to service worker');
   chrome.runtime.sendMessage({
-    type: customEvent.detail.type,
-    studentMarkdown: customEvent.detail.studentMarkdown,
-    professorMarkdown: customEvent.detail.professorMarkdown
+    type: 'PROCESS_GRADING'
   }).then(response => {
     console.log('🔵 Grading request service worker response:', response);
   }).catch(error => {
@@ -107,12 +145,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
   } else if (message.type === 'CAPTURE_COMPLETE' || message.type === 'CAPTURE_ERROR') {
     // Forward capture results to the injected UI
-    console.log('Forwarding capture result to injected UI:', message);
+    console.log('🔵 Forwarding capture result to injected UI:', message);
+    console.log('🔵 Message details:', {
+      type: message.type,
+      captureType: message.captureType,
+      success: message.success,
+      hasImageData: !!message.imageData,
+      imageDataLength: message.imageData ? message.imageData.length : 0
+    });
 
     const resultEvent = new CustomEvent('nous-grade-capture-result', {
       detail: message
     });
+    
+    console.log('🔵 Dispatching nous-grade-capture-result event with detail:', resultEvent.detail);
     document.dispatchEvent(resultEvent);
+    
+    // Also log if there are any listeners
+    console.log('🔵 Event dispatched. Current DOM ready state:', document.readyState);
 
     sendResponse({ success: true });
   } else if (message.type === 'PROCESSING_STATE_UPDATE') {
@@ -144,6 +194,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     document.dispatchEvent(gradingEvent);
 
+    sendResponse({ success: true });
+  } else if (message.type === 'SHOW_SCREEN_SELECTOR') {
+    // Show full-browser screen selector overlay
+    console.log('🔵 Showing full-browser screen selector for:', message.captureType);
+    
+    showFullBrowserScreenSelector(message.screenImageData, message.captureType);
     sendResponse({ success: true });
   }
   
@@ -206,6 +262,60 @@ function handleStartCapture(captureType: 'student' | 'professor') {
     
     console.log(`Mock capture completed for ${captureType}`);
   }, 1000);
+}
+
+// Function to show full-browser screen selector
+async function showFullBrowserScreenSelector(screenImageData: string, captureType: 'student' | 'professor') {
+  console.log('🔵 Starting full-browser screen selector for:', captureType);
+  
+  try {
+    await contentScriptScreenSelector.showSelector({
+      screenImageData: screenImageData,
+      captureType: captureType,
+      onComplete: (selectionArea, croppedImageData) => {
+        console.log('🔵 Full-browser selection completed:', selectionArea);
+        console.log('🔵 Cropped image data length:', croppedImageData.length);
+        console.log('🔵 About to send CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT message...');
+        
+        // Check if extension context is still valid
+        if (!chrome.runtime?.id) {
+          console.error('🔴 Extension context invalidated during completion');
+          return;
+        }
+        
+        // Send the cropped image data back to the service worker
+        const message = {
+          type: 'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT',
+          imageData: croppedImageData,
+          captureType: captureType,
+          selectionArea: selectionArea
+        };
+        
+        console.log('🔵 Sending message to service worker:', message);
+        
+        chrome.runtime.sendMessage(message).then(response => {
+          console.log('🔵 Service worker response received:', response);
+        }).catch(error => {
+          console.error('🔴 Error sending cropped image to service worker:', error);
+          console.error('🔴 Error details:', error.message);
+        });
+      },
+      onCancel: () => {
+        console.log('🔵 Full-browser selection cancelled');
+        
+        // Send cancellation message to service worker
+        chrome.runtime.sendMessage({
+          type: 'CAPTURE_CANCELLED',
+          captureType: captureType
+        }).catch(error => {
+          console.error('🔴 Error sending cancellation to service worker:', error);
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('🔴 Error showing full-browser screen selector:', error);
+  }
 }
 
 // Function to handle desktop capture requests from service worker

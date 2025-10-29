@@ -9,14 +9,69 @@ import {
   DEFAULT_BACKEND_CONFIG,
   API_ENDPOINTS
 } from '../types/backend';
-import { mockBackend } from './mock-backend';
+// Removed mock backend and local OCR - using real backend API
 
 export class BackendAPIService {
   private config: BackendConfig;
-  private useMockBackend: boolean = true; // Set to false when real backend is available
+  // Always use real backend - no more mock or local OCR
+  private currentSessionId: string | null = null;
+  private static instance: BackendAPIService | null = null;
+  private sessionCreationPromise: Promise<string> | null = null;
 
   constructor(config?: Partial<BackendConfig>) {
     this.config = { ...DEFAULT_BACKEND_CONFIG, ...config };
+  }
+
+  /**
+   * Reset the current session (for new grading workflows)
+   */
+  resetSession(): void {
+    this.currentSessionId = null;
+    this.sessionCreationPromise = null;
+    console.log('🔄 Backend session reset');
+  }
+
+  /**
+   * Create a new grading session (or return existing one)
+   */
+  async createSession(): Promise<{ sessionId: string; expiresAt: string }> {
+    // If we already have a session, return it
+    if (this.currentSessionId) {
+      console.log('🎯 Using existing backend session:', this.currentSessionId);
+      return { 
+        sessionId: this.currentSessionId, 
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes from now
+      };
+    }
+
+    console.log('🎯 Creating new grading session...');
+    
+    try {
+      const response = await this.makeRequest<{ sessionId: string; expiresAt: string }>(
+        API_ENDPOINTS.CREATE_SESSION,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            metadata: {
+              extensionVersion: '1.0.0',
+              userAgent: navigator.userAgent
+            }
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': this.config.apiKey || ''
+          }
+        }
+      );
+
+      this.currentSessionId = response.sessionId;
+      console.log('🎯 Backend session created:', response.sessionId);
+      console.log('🎯 Session expires at:', response.expiresAt);
+      return response;
+    } catch (error) {
+      console.error('🔴 Failed to create session:', error);
+      throw error;
+    }
   }
 
   /**
@@ -26,30 +81,56 @@ export class BackendAPIService {
     console.log('🔵 Converting image to markdown for:', request.type);
     const startTime = Date.now();
 
-    // Use mock backend for testing
-    if (this.useMockBackend) {
-      console.log('🟡 Using mock backend for image conversion');
-      return await mockBackend.convertImageToMarkdown(request);
+    // Ensure we have a session (thread-safe)
+    if (!this.currentSessionId && !this.sessionCreationPromise) {
+      this.sessionCreationPromise = this.createSession().then(result => {
+        this.currentSessionId = result.sessionId;
+        this.sessionCreationPromise = null;
+        return result.sessionId;
+      });
+    }
+    
+    if (this.sessionCreationPromise) {
+      await this.sessionCreationPromise;
     }
 
     try {
-      const response = await this.makeRequest<ImageToMarkdownResponse>(
+      const response = await this.makeRequest<{
+        screenshotId: string;
+        ocrResult: {
+          extractedText: string;
+          confidence: number;
+          processingTime: number;
+        };
+        sessionStatus: string;
+        readyForGrading: boolean;
+      }>(
         API_ENDPOINTS.IMAGE_TO_MARKDOWN,
         {
           method: 'POST',
-          body: JSON.stringify(request),
+          body: JSON.stringify({
+            sessionId: this.currentSessionId,
+            type: request.type === 'student' ? 'student_answer' : 'professor_answer',
+            imageData: request.imageData
+          }),
           headers: {
             'Content-Type': 'application/json',
-            ...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` })
+            'X-API-Key': this.config.apiKey || ''
           }
         }
       );
 
       const processingTime = Date.now() - startTime;
       console.log(`🔵 Image conversion completed in ${processingTime}ms`);
+      console.log(`🔵 Session status after upload: ${response.sessionStatus}`);
+      console.log(`🔵 Ready for grading: ${response.readyForGrading}`);
+
+      // Convert the backend response to our expected format
+      const markdown = `# ${request.type === 'student' ? 'Student' : 'Professor'} Answer\n\n${response.ocrResult.extractedText}`;
 
       return {
-        ...response,
+        markdown,
+        confidence: response.ocrResult.confidence,
         processingTime,
         success: true
       };
@@ -74,33 +155,73 @@ export class BackendAPIService {
     console.log('🔵 Starting AI grading process');
     const startTime = Date.now();
 
-    // Use mock backend for testing
-    if (this.useMockBackend) {
-      console.log('🟡 Using mock backend for AI grading');
-      return await mockBackend.gradeAnswer(request);
+    // Ensure we have a session
+    if (!this.currentSessionId) {
+      throw new Error('No active session. Please upload screenshots first.');
     }
 
+    console.log('🔵 Using session ID for grading:', this.currentSessionId);
+
     try {
-      const response = await this.makeRequest<GradeAnswerResponse>(
+      // Trigger grading
+      const gradeResponse = await this.makeRequest<{
+        gradingId: string;
+        estimatedCompletionTime: number;
+        status: string;
+      }>(
         API_ENDPOINTS.GRADE_ANSWER,
         {
           method: 'POST',
-          body: JSON.stringify(request),
+          body: JSON.stringify({
+            sessionId: this.currentSessionId
+          }),
           headers: {
             'Content-Type': 'application/json',
-            ...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` })
+            'X-API-Key': this.config.apiKey || ''
           }
         }
       );
 
-      const processingTime = Date.now() - startTime;
-      console.log(`🔵 AI grading completed in ${processingTime}ms`);
+      console.log('🔵 Grading initiated, waiting for completion...');
 
-      return {
-        ...response,
-        processingTime,
-        success: true
-      };
+      // Poll for results
+      let attempts = 0;
+      const maxAttempts = 30; // 30 seconds max wait
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        try {
+          const results = await this.getResults(this.currentSessionId);
+          
+          if (results.session.status === 'grading_complete' && results.gradingResult) {
+            const processingTime = Date.now() - startTime;
+            console.log(`🔵 AI grading completed in ${processingTime}ms`);
+
+            return {
+              gradedAnswer: results.gradingResult.feedback,
+              points: results.gradingResult.score,
+              maxPoints: results.gradingResult.maxScore,
+              reasoning: results.gradingResult.reasoning || results.gradingResult.feedback,
+              feedback: results.gradingResult.feedback,
+              confidence: results.gradingResult.confidence,
+              processingTime,
+              success: true
+            };
+          }
+          
+          if (results.session.status === 'error') {
+            throw new Error('Grading failed on backend');
+          }
+          
+        } catch (pollError) {
+          console.warn('🟡 Polling attempt failed:', pollError);
+        }
+        
+        attempts++;
+      }
+
+      throw new Error('Grading timeout - results not available within expected time');
 
     } catch (error) {
       console.error('🔴 AI grading failed:', error);
@@ -120,15 +241,40 @@ export class BackendAPIService {
   }
 
   /**
+   * Get results for a session
+   */
+  async getResults(sessionId: string): Promise<{
+    session: any;
+    gradingResult?: {
+      score: number;
+      maxScore: number;
+      feedback: string;
+      reasoning: string;
+      confidence: number;
+    };
+    ocrResults: any[];
+  }> {
+    const response = await this.makeRequest<{
+      session: any;
+      gradingResult?: any;
+      ocrResults: any[];
+    }>(
+      `${API_ENDPOINTS.GET_RESULTS}/${sessionId}`,
+      {
+        method: 'GET',
+        headers: {
+          'X-API-Key': this.config.apiKey || ''
+        }
+      }
+    );
+
+    return response;
+  }
+
+  /**
    * Check backend API health
    */
   async healthCheck(): Promise<{ healthy: boolean; message: string }> {
-    // Use mock backend for testing
-    if (this.useMockBackend) {
-      console.log('🟡 Using mock backend for health check');
-      return await mockBackend.healthCheck();
-    }
-
     try {
       const response = await this.makeRequest<{ status: string; version: string }>(
         API_ENDPOINTS.HEALTH_CHECK,
@@ -147,6 +293,8 @@ export class BackendAPIService {
       };
     }
   }
+
+  // Removed local OCR methods - using backend API for all processing
 
   /**
    * Generic request method with retry logic
@@ -175,10 +323,16 @@ export class BackendAPIService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       console.log('🔵 API Response received:', { status: response.status, dataKeys: Object.keys(data) });
       
-      return data;
+      // Handle the backend's response format: { success: boolean, data: T, message?: string }
+      if (data.success === false) {
+        throw new Error(data.error?.message || 'Backend request failed');
+      }
+      
+      // Return the data portion for successful responses
+      return data.data || data;
 
     } catch (error) {
       console.error(`🔴 API Request failed (attempt ${attempt}):`, error);
@@ -222,20 +376,7 @@ export class BackendAPIService {
     console.log('🔵 Backend API config updated:', this.config);
   }
 
-  /**
-   * Toggle mock backend mode
-   */
-  setMockMode(useMock: boolean): void {
-    this.useMockBackend = useMock;
-    console.log('🔵 Mock backend mode:', useMock ? 'enabled' : 'disabled');
-  }
-
-  /**
-   * Get current mock mode status
-   */
-  isMockMode(): boolean {
-    return this.useMockBackend;
-  }
+  // Mock mode methods removed - always using real backend
 }
 
 // Singleton instance for use across the extension

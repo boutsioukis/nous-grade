@@ -88,7 +88,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
 
         case 'PROCESS_GRADING':
-          handleProcessGrading(message.studentMarkdown, message.professorMarkdown, sender);
+          handleProcessGrading(sender);
           sendResponse({ success: true });
           break;
 
@@ -99,6 +99,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'CLEAR_SESSION':
           handleClearSession(sender);
+          sendResponse({ success: true });
+          break;
+
+        case 'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT':
+          handleCaptureCompleteFromContentScript(message.imageData, message.captureType, message.selectionArea, sender);
+          sendResponse({ success: true });
+          break;
+
+        case 'CAPTURE_CANCELLED':
+          handleCaptureCancelled(message.captureType, sender);
           sendResponse({ success: true });
           break;
 
@@ -527,10 +537,21 @@ async function handleImageToMarkdown(imageData: string, type: 'student' | 'profe
 }
 
 // Handle grading process
-async function handleProcessGrading(studentMarkdown: string, professorMarkdown: string, sender: chrome.runtime.MessageSender) {
+async function handleProcessGrading(sender: chrome.runtime.MessageSender) {
   console.log('🟢 Starting AI grading process');
   
   try {
+    // Get current session data
+    const session = sessionManager.getCurrentSession();
+    
+    if (!session) {
+      throw new Error('No active session found. Please capture screenshots first.');
+    }
+    
+    if (!session.studentMarkdown || !session.professorMarkdown) {
+      throw new Error('Missing markdown data. Please convert images to markdown first.');
+    }
+
     sessionManager.updateProcessingState({
       status: 'grading',
       progress: 80,
@@ -538,8 +559,8 @@ async function handleProcessGrading(studentMarkdown: string, professorMarkdown: 
     });
 
     const request: GradeAnswerRequest = {
-      studentAnswer: studentMarkdown,
-      modelAnswer: professorMarkdown,
+      studentAnswer: session.studentMarkdown,
+      modelAnswer: session.professorMarkdown,
       maxPoints: 10
     };
 
@@ -608,5 +629,94 @@ async function handleClearSession(sender: chrome.runtime.MessageSender) {
     }).catch(() => {
       // Ignore if content script not available
     });
+  }
+}
+
+/**
+ * Handle capture completion from content script (after region selection)
+ */
+async function handleCaptureCompleteFromContentScript(
+  imageData: string, 
+  captureType: 'student' | 'professor', 
+  selectionArea: any,
+  sender: chrome.runtime.MessageSender
+) {
+  console.log('🟢 Handling capture completion from content script for:', captureType);
+  console.log('🟢 Image data length:', imageData.length);
+  console.log('🟢 Selection area:', selectionArea);
+  
+  try {
+    // Store the captured image data
+    await sessionManager.storeCapturedImage(captureType, imageData);
+    
+    // Send capture complete message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_COMPLETE',
+        captureType: captureType,
+        imageData: imageData,
+        success: true
+      });
+    }
+    
+    console.log('🟢', captureType, 'capture data stored successfully');
+    
+    // Check if we have both images and start auto-conversion
+    const session = sessionManager.getCurrentSession();
+    if (session?.studentImageData && session?.professorImageData) {
+      console.log('🟢 Both images captured, starting auto-conversion');
+      
+      // Ensure backend session is created before starting conversions
+      try {
+        await backendAPI.createSession();
+        console.log('🟢 Backend session ensured before image conversions');
+      } catch (error) {
+        console.error('🔴 Failed to ensure backend session:', error);
+      }
+      
+      // Start markdown conversion for both images sequentially to avoid race conditions
+      await handleImageToMarkdown(session.studentImageData!, 'student', sender);
+      await handleImageToMarkdown(session.professorImageData!, 'professor', sender);
+    }
+    
+  } catch (error) {
+    console.error('🔴 Error handling capture completion from content script:', error);
+    
+    // Send error message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_ERROR',
+        captureType: captureType,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+}
+
+/**
+ * Handle capture cancellation from content script
+ */
+async function handleCaptureCancelled(captureType: 'student' | 'professor', sender: chrome.runtime.MessageSender) {
+  console.log('🟢 Capture cancelled by user for:', captureType);
+  
+  try {
+    // Update processing state
+    sessionManager.updateProcessingState({
+      status: 'idle',
+      progress: 0,
+      message: `${captureType} capture cancelled by user`
+    });
+    
+    // Send cancellation message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_CANCELLED',
+        captureType: captureType
+      });
+    }
+    
+    console.log('🟢 Capture cancellation handled successfully');
+  } catch (error) {
+    console.error('🔴 Error handling capture cancellation:', error);
   }
 }

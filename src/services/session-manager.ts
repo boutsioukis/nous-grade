@@ -1,6 +1,7 @@
 // Session management service for handling grading workflow state
 
 import { SessionData, ProcessingState, ProcessingStatus } from '../types/backend';
+import { backendAPI } from './backend-api';
 
 export class SessionManager {
   private currentSession: SessionData | null = null;
@@ -27,6 +28,9 @@ export class SessionManager {
       [`session_${sessionId}`]: this.currentSession,
       'current_session_id': sessionId
     });
+
+    // Reset backend session for new workflow
+    backendAPI.resetSession();
 
     console.log('🟢 New grading session created:', sessionId);
     return sessionId;

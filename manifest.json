@@ -32,5 +32,14 @@
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "Nous-Grade Tool"
-  }
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tesseract/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

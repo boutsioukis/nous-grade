@@ -148,7 +148,37 @@
 .action-buttons {
   display: flex;
   justify-content: center;
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+.translate-button {
+  background: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+}
+
+.translate-button.enabled:hover {
+  background: #F57C00;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+}
+
+.translate-button.disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.translate-button.disabled:hover {
+  transform: none;
 }
 
 .grade-button {

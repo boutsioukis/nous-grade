@@ -60,8 +60,196 @@ injectButton.addEventListener('click', async () => {
   }
 });
 
-// Process media stream directly in popup context
-async function processStreamInPopup(streamId: string, captureType: 'student' | 'professor'): Promise<string> {
+// Show region selector overlay in popup context
+async function showRegionSelector(canvas: HTMLCanvasElement, captureType: 'student' | 'professor'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    console.log('🟡 Starting region selector in popup context');
+    
+    // Create full-screen overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999999;
+      cursor: crosshair;
+      background: rgba(0, 0, 0, 0.1);
+    `;
+    
+    // Create selection canvas
+    const selectionCanvas = document.createElement('canvas');
+    selectionCanvas.width = window.screen.width;
+    selectionCanvas.height = window.screen.height;
+    selectionCanvas.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    `;
+    
+    const ctx = selectionCanvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Failed to get selection canvas context'));
+      return;
+    }
+    
+    // Draw the captured screen onto the selection canvas
+    ctx.drawImage(canvas, 0, 0, selectionCanvas.width, selectionCanvas.height);
+    
+    // Store original image data
+    const originalImageData = ctx.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height);
+    
+    overlay.appendChild(selectionCanvas);
+    document.body.appendChild(overlay);
+    
+    // Show instructions
+    const instructions = document.createElement('div');
+    instructions.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 1000000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      text-align: center;
+    `;
+    instructions.innerHTML = `
+      <div style="margin-bottom: 8px;">📸 Select the area you want to capture</div>
+      <div style="font-size: 12px; opacity: 0.8;">Click and drag to select • Press ESC to cancel</div>
+    `;
+    document.body.appendChild(instructions);
+    
+    // Selection state
+    let isSelecting = false;
+    let startX = 0, startY = 0, currentX = 0, currentY = 0;
+    
+    // Mouse event handlers
+    const handleMouseDown = (e: MouseEvent) => {
+      isSelecting = true;
+      const rect = selectionCanvas.getBoundingClientRect();
+      startX = (e.clientX - rect.left) * (selectionCanvas.width / rect.width);
+      startY = (e.clientY - rect.top) * (selectionCanvas.height / rect.height);
+      currentX = startX;
+      currentY = startY;
+    };
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSelecting) return;
+      
+      const rect = selectionCanvas.getBoundingClientRect();
+      currentX = (e.clientX - rect.left) * (selectionCanvas.width / rect.width);
+      currentY = (e.clientY - rect.top) * (selectionCanvas.height / rect.height);
+      
+      // Redraw
+      ctx.putImageData(originalImageData, 0, 0);
+      
+      // Draw selection rectangle
+      const x = Math.min(startX, currentX);
+      const y = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+      
+      // Draw selection rectangle
+      ctx.strokeStyle = '#2196F3';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(x, y, width, height);
+      
+      // Draw overlay outside selection
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(0, 0, selectionCanvas.width, y); // Top
+      ctx.fillRect(0, y, x, height); // Left
+      ctx.fillRect(x + width, y, selectionCanvas.width - (x + width), height); // Right
+      ctx.fillRect(0, y + height, selectionCanvas.width, selectionCanvas.height - (y + height)); // Bottom
+    };
+    
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!isSelecting) return;
+      isSelecting = false;
+      
+      const rect = selectionCanvas.getBoundingClientRect();
+      currentX = (e.clientX - rect.left) * (selectionCanvas.width / rect.width);
+      currentY = (e.clientY - rect.top) * (selectionCanvas.height / rect.height);
+      
+      // Calculate selection area
+      const x = Math.min(startX, currentX);
+      const y = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+      
+      // Ensure minimum size
+      if (width < 10 || height < 10) {
+        console.log('🟡 Selection too small, using full canvas');
+        cleanup();
+        resolve(canvas.toDataURL('image/png'));
+        return;
+      }
+      
+      // Crop selection
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = width;
+      cropCanvas.height = height;
+      const cropCtx = cropCanvas.getContext('2d');
+      
+      if (!cropCtx) {
+        reject(new Error('Failed to get crop canvas context'));
+        return;
+      }
+      
+      // Draw selected region
+      cropCtx.drawImage(selectionCanvas, x, y, width, height, 0, 0, width, height);
+      
+      const croppedImageData = cropCanvas.toDataURL('image/png');
+      console.log('🟡 Region cropped in popup, data length:', croppedImageData.length);
+      
+      cleanup();
+      resolve(croppedImageData);
+    };
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        console.log('🟡 Region selection cancelled');
+        cleanup();
+        reject(new Error('Region selection cancelled by user'));
+      }
+    };
+    
+    const cleanup = () => {
+      selectionCanvas.removeEventListener('mousedown', handleMouseDown);
+      selectionCanvas.removeEventListener('mousemove', handleMouseMove);
+      selectionCanvas.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('keydown', handleKeyDown);
+      overlay.remove();
+      instructions.remove();
+    };
+    
+    // Add event listeners
+    selectionCanvas.addEventListener('mousedown', handleMouseDown);
+    selectionCanvas.addEventListener('mousemove', handleMouseMove);
+    selectionCanvas.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Remove instructions after 3 seconds
+    setTimeout(() => {
+      if (instructions.parentNode) {
+        instructions.remove();
+      }
+    }, 3000);
+  });
+}
+
+// Capture full screen directly in popup context
+async function captureFullScreen(streamId: string, captureType: 'student' | 'professor'): Promise<string> {
   console.log('🟡 Processing stream in popup context:', streamId);
   
   try {
@@ -102,44 +290,101 @@ async function processStreamInPopup(streamId: string, captureType: 'student' | '
       setTimeout(() => reject(new Error('Video loading timeout')), 10000);
     });
 
-    // Show screen selector for region selection
-    const imageData = await showScreenSelector(video, captureType);
+    // Capture the full screen immediately in the popup context
+    // because streamId expires quickly in Manifest V3
+    console.log('🟡 Stream ready, capturing full screen immediately to avoid expiration');
     
-    console.log('🟡 Image captured with selection, data length:', imageData.length);
+    // Create a canvas for the full screen capture
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      throw new Error('Failed to get canvas context');
+    }
 
-    // Clean up
+    // Wait for video to actually start playing and showing content
+    console.log('🟡 Waiting for video to start playing...');
+    await new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 20; // 2 seconds max
+      
+      const checkVideo = () => {
+        attempts++;
+        console.log(`🟡 Attempt ${attempts}: Checking video content...`);
+        
+        // Try to play the video
+        video.play().catch(() => {
+          // Ignore play errors, video might already be playing
+        });
+        
+        // Create a small test canvas to check if video has content
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 100;
+        testCanvas.height = 100;
+        const testCtx = testCanvas.getContext('2d');
+        
+        if (testCtx) {
+          testCtx.drawImage(video, 0, 0, 100, 100);
+          const testPixel = testCtx.getImageData(50, 50, 1, 1);
+          const hasContent = testPixel.data[0] > 0 || testPixel.data[1] > 0 || testPixel.data[2] > 0;
+          
+          console.log(`🟡 Test pixel: [${testPixel.data[0]}, ${testPixel.data[1]}, ${testPixel.data[2]}, ${testPixel.data[3]}]`);
+          
+          if (hasContent || attempts >= maxAttempts) {
+            console.log(`🟡 Video content ${hasContent ? 'detected' : 'timeout'} after ${attempts} attempts`);
+            resolve(undefined);
+            return;
+          }
+        }
+        
+        // Wait 100ms and try again
+        setTimeout(checkVideo, 100);
+      };
+      
+      checkVideo();
+    });
+    
+    // Debug video state
+    console.log('🟡 Video ready state:', video.readyState);
+    console.log('🟡 Video current time:', video.currentTime);
+    console.log('🟡 Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+    console.log('🟡 Canvas dimensions:', canvas.width, 'x', canvas.height);
+    
+    // Draw video frame to canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Debug what we captured
+    const samplePixel = ctx.getImageData(100, 100, 1, 1);
+    console.log('🟡 Sample pixel from video capture:', samplePixel.data);
+    
+    // Check if canvas has any content
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let hasContent = false;
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      if (imageData.data[i] > 0 || imageData.data[i + 1] > 0 || imageData.data[i + 2] > 0) {
+        hasContent = true;
+        break;
+      }
+    }
+    console.log('🟡 Video capture has content:', hasContent);
+    
+    // Clean up video and stream
     stream.getTracks().forEach(track => track.stop());
     video.remove();
-
-    return imageData;
+    
+    // Convert full screen to base64 image data
+    const fullScreenImageData = canvas.toDataURL('image/png', 0.9);
+    
+    console.log('🟡 Full screen capture completed, data length:', fullScreenImageData.length);
+    
+    return fullScreenImageData;
 
   } catch (error) {
     console.error('🟡 Error processing stream in popup:', error);
     throw error;
   }
-}
-
-// Show screen selector overlay
-async function showScreenSelector(video: HTMLVideoElement, captureType: 'student' | 'professor'): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // Import the screen selector dynamically
-    import('../components/ScreenSelector').then(({ screenSelector }) => {
-      screenSelector.showSelector(
-        video,
-        (selectionArea, croppedImageData) => {
-          console.log('🟡 Screen selection completed for:', captureType, selectionArea);
-          resolve(croppedImageData);
-        },
-        () => {
-          console.log('🟡 Screen selection cancelled for:', captureType);
-          reject(new Error('Screen selection cancelled by user'));
-        }
-      );
-    }).catch(error => {
-      console.error('🟡 Error loading screen selector:', error);
-      reject(error);
-    });
-  });
 }
 
 // Handle desktop capture directly in the popup
@@ -174,24 +419,29 @@ async function handleDesktopCapture(captureType: 'student' | 'professor') {
     console.log('🟡 Desktop capture successful, streamId:', streamId);
     updateStatus(`Processing ${captureType} capture...`);
     
-    // Process the stream directly in popup context to avoid streamId expiration
-    const imageData = await processStreamInPopup(streamId, captureType);
+    // Capture the full screen first, then send to content script for region selection
+    const fullScreenImageData = await captureFullScreen(streamId, captureType);
     
-    // Send the captured image data to service worker
-    const response = await chrome.runtime.sendMessage({
-      type: 'CAPTURE_COMPLETE_FROM_POPUP',
-      imageData: imageData,
+    // Send the full screen image to content script for region selection
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab.id) {
+      throw new Error('No active tab found');
+    }
+    
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: 'SHOW_SCREEN_SELECTOR',
+      screenImageData: fullScreenImageData,
       captureType: captureType
     });
     
     if (response.success) {
-      updateStatus(`${captureType} capture successful!`);
-      console.log('🟡 Image capture and processing completed successfully');
+      updateStatus(`${captureType} region selection started...`);
+      console.log('🟡 Full screen sent to content script for region selection');
     } else {
-      throw new Error(response.error || 'Failed to process captured image');
+      throw new Error(response.error || 'Failed to start region selection');
     }
     
-    return imageData;
+    return fullScreenImageData;
     
   } catch (error) {
     console.error('🟡 Desktop capture failed:', error);
@@ -411,15 +661,15 @@ function injectGradingUIFromPopup() {
     const message = customEvent.detail;
     
     if (message.type === 'CAPTURE_COMPLETE') {
-      const button = document.getElementById(`capture-${message.captureType}`) as HTMLButtonElement;
-      const status = document.getElementById(`${message.captureType}-status`);
+      // Display the captured image as a thumbnail
+      displayCapturedImage(message.captureType, message.imageData);
       
-      if (button && status) {
+      const button = document.getElementById(`capture-${message.captureType}`) as HTMLButtonElement;
+      
+      if (button) {
         button.textContent = '✓ Captured';
         button.style.background = '#4CAF50';
         button.disabled = false;
-        status.style.background = '#4CAF50';
-        status.style.boxShadow = '0 0 8px rgba(76, 175, 80, 0.5)';
       }
     } else if (message.type === 'CAPTURE_ERROR') {
       const button = document.getElementById(`capture-${message.captureType}`) as HTMLButtonElement;
@@ -722,6 +972,56 @@ function injectGradingUIFromPopup() {
     
     if (spinnerEl) {
       spinnerEl.style.display = state.status === 'idle' || state.status === 'completed' ? 'none' : 'block';
+    }
+  }
+
+  // Helper function to display captured image thumbnail
+  function displayCapturedImage(type: 'student' | 'professor', imageData: string) {
+    const captureArea = document.getElementById(`${type}-capture-area`);
+    const markdownArea = document.getElementById(`${type}-markdown`);
+    
+    if (captureArea) {
+      // Create thumbnail preview
+      const thumbnailContainer = document.createElement('div');
+      thumbnailContainer.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+      `;
+      
+      const thumbnail = document.createElement('img');
+      thumbnail.src = imageData;
+      thumbnail.style.cssText = `
+        max-width: 200px;
+        max-height: 150px;
+        border-radius: 4px;
+        border: 2px solid #4CAF50;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      `;
+      
+      const status = document.createElement('div');
+      status.style.cssText = `
+        font-size: 12px;
+        color: #4CAF50;
+        font-weight: 600;
+      `;
+      status.textContent = '✓ Captured';
+      
+      thumbnailContainer.appendChild(thumbnail);
+      thumbnailContainer.appendChild(status);
+      
+      // Replace capture area with thumbnail
+      captureArea.innerHTML = '';
+      captureArea.appendChild(thumbnailContainer);
+    }
+
+    // Update status indicator
+    const statusIndicator = document.getElementById(`${type}-status`);
+    if (statusIndicator) {
+      statusIndicator.style.background = '#4CAF50';
+      statusIndicator.style.boxShadow = '0 0 8px rgba(76, 175, 80, 0.5)';
     }
   }
 

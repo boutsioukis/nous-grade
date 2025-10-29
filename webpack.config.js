@@ -41,7 +41,11 @@ module.exports = {
         { from: 'src/offscreen/offscreen-document.html', to: 'offscreen/offscreen-document.html' },
         { from: 'src/content/content-script.css', to: 'content/content-script.css' },
         { from: 'src/components/GradingOverlay.css', to: 'components/GradingOverlay.css' },
-        { from: 'icons', to: 'icons', noErrorOnMissing: true }
+        { from: 'icons', to: 'icons', noErrorOnMissing: true },
+        // Copy Tesseract.js worker files
+        { from: 'node_modules/tesseract.js/dist/worker.min.js', to: 'tesseract/worker.min.js' },
+        { from: 'node_modules/tesseract.js-core/tesseract-core.wasm.js', to: 'tesseract/tesseract-core.wasm.js', noErrorOnMissing: true },
+        { from: 'node_modules/tesseract.js-core/tesseract-core-simd.wasm.js', to: 'tesseract/tesseract-core-simd.wasm.js', noErrorOnMissing: true }
       ]
     })
   ],
