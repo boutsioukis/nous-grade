@@ -21,7 +21,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { validateApiKey } from './middleware/auth';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: '../.env' });
 
 class NousGradeServer {
   private app: express.Application;

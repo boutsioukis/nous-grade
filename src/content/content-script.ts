@@ -185,6 +185,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     document.dispatchEvent(markdownEvent);
 
     sendResponse({ success: true });
+  } else if (message.type === 'MARKDOWN_CONVERSION_ALL_COMPLETE') {
+    // Forward markdown all complete to the injected UI
+    console.log('🔵 Forwarding markdown all complete to injected UI:', message);
+
+    const markdownAllEvent = new CustomEvent('nous-grade-markdown-complete', {
+      detail: message
+    });
+    document.dispatchEvent(markdownAllEvent);
+
+    sendResponse({ success: true });
   } else if (message.type === 'GRADING_COMPLETE') {
     // Forward grading results to the injected UI
     console.log('🔵 Forwarding grading results to injected UI:', message);

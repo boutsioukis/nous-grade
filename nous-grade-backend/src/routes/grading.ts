@@ -24,7 +24,7 @@ const llmClient = new UnifiedLLMClient({
   },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY!,
-    gradingModel: 'claude-3-opus-20240229',
+    gradingModel: 'claude-3-5-sonnet-20241022',
     feedbackModel: 'claude-3-5-sonnet-20241022'
   }
 });
@@ -129,7 +129,7 @@ router.post('/grade', [
             startedAt: now,
             metadata: { 
               gradingId,
-              model: 'claude-3-opus-20240229',
+              model: 'claude-3-5-sonnet-20241022',
               studentOcrId: studentOCR.id,
               professorOcrId: professorOCR.id
             }

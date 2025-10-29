@@ -258,3 +258,121 @@
     gap: 8px;
   }
 }
+
+/* Markdown content styles */
+.captured-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.markdown-content {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e9ecef;
+}
+
+.markdown-content h4 {
+  margin: 0 0 12px 0;
+  color: #495057;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.markdown-text {
+  background: white;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #333;
+  border: 1px solid #ddd;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Grading results styles */
+.grading-results {
+  background: #f0f8ff;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  border: 2px solid #2196F3;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.1);
+}
+
+.grading-results h3 {
+  margin: 0 0 20px 0;
+  color: #1976D2;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.grading-score {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  text-align: center;
+  border: 1px solid #e3f2fd;
+}
+
+.points-earned {
+  font-size: 28px;
+  font-weight: bold;
+  color: #4CAF50;
+}
+
+.points-separator {
+  font-size: 20px;
+  color: #666;
+  margin: 0 4px;
+}
+
+.points-total {
+  font-size: 20px;
+  color: #666;
+}
+
+.points-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.grading-feedback,
+.grading-reasoning {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e3f2fd;
+}
+
+.grading-feedback:last-child,
+.grading-reasoning:last-child {
+  margin-bottom: 0;
+}
+
+.grading-feedback h4,
+.grading-reasoning h4 {
+  margin: 0 0 8px 0;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.grading-feedback p,
+.grading-reasoning p {
+  margin: 0;
+  color: #555;
+  line-height: 1.6;
+  font-size: 14px;
+}

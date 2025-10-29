@@ -11,6 +11,7 @@ interface CaptureState {
 }
 
 const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
+  
   const [captureState, setCaptureState] = useState<CaptureState>({
     student: false,
     professor: false
@@ -18,11 +19,16 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   
   const [studentImageData, setStudentImageData] = useState<string | null>(null);
   const [professorImageData, setProfessorImageData] = useState<string | null>(null);
+  const [studentMarkdown, setStudentMarkdown] = useState<string | null>(null);
+  const [professorMarkdown, setProfessorMarkdown] = useState<string | null>(null);
+  const [gradingResult, setGradingResult] = useState<any | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [markdownConverted, setMarkdownConverted] = useState(false);
 
   // Listen for capture completion events
   useEffect(() => {
+    
     const handleCaptureComplete = (event: CustomEvent) => {
       console.log('🟢 Capture completed:', event.detail);
       const { captureType, imageData, success } = event.detail;
@@ -46,19 +52,77 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       setCaptureState(prev => ({ ...prev, [captureType]: false }));
     };
 
+    const handleMarkdownComplete = (event: CustomEvent) => {
+      console.log('🟢 Markdown conversion completed:', event.detail);
+      const { captureType, markdown, confidence, success } = event.detail;
+      
+      if (success && markdown) {
+        if (captureType === 'student') {
+          setStudentMarkdown(markdown);
+          console.log('🟢 Student markdown set, length:', markdown.length);
+        } else if (captureType === 'professor') {
+          setProfessorMarkdown(markdown);
+          console.log('🟢 Professor markdown set, length:', markdown.length);
+        }
+      }
+      
+      setIsConverting(false);
+    };
+
+    const handleProcessingUpdate = (event: CustomEvent) => {
+      console.log('🟢 Processing state update received:', event.detail);
+      // You can add additional state updates here if needed
+    };
+
+    const handleGradingComplete = (event: CustomEvent) => {
+      console.log('🟢 Grading completed:', event.detail);
+      const { result, success } = event.detail;
+      
+      if (success && result) {
+        setGradingResult(result);
+        setIsProcessing(false);
+        console.log('🟢 Grading result set:', result);
+      } else {
+        console.error('🔴 Grading failed:', event.detail);
+        setIsProcessing(false);
+      }
+    };
+
     // Add event listeners
     document.addEventListener('nous-grade-capture-result', handleCaptureComplete as EventListener);
     document.addEventListener('nous-grade-capture-error', handleCaptureError as EventListener);
+    document.addEventListener('nous-grade-markdown-complete', handleMarkdownComplete as EventListener);
+    document.addEventListener('nous-grade-processing-update', handleProcessingUpdate as EventListener);
+    document.addEventListener('nous-grade-grading-complete', handleGradingComplete as EventListener);
 
     // Cleanup
     return () => {
       document.removeEventListener('nous-grade-capture-result', handleCaptureComplete as EventListener);
       document.removeEventListener('nous-grade-capture-error', handleCaptureError as EventListener);
+      document.removeEventListener('nous-grade-markdown-complete', handleMarkdownComplete as EventListener);
+      document.removeEventListener('nous-grade-processing-update', handleProcessingUpdate as EventListener);
+      document.removeEventListener('nous-grade-grading-complete', handleGradingComplete as EventListener);
     };
   }, []);
 
+  // Check if both markdowns are available and update markdownConverted state
+  useEffect(() => {
+    if (studentMarkdown && professorMarkdown && !markdownConverted) {
+      setMarkdownConverted(true);
+      console.log('🟢 Both markdowns available, ready for grading');
+    }
+  }, [studentMarkdown, professorMarkdown, markdownConverted]);
+
   const handleCaptureClick = async (type: 'student' | 'professor') => {
     console.log(`🟢 Starting capture for ${type}`);
+    
+    // Reset markdown states when new capture starts
+    if (type === 'student') {
+      setStudentMarkdown(null);
+    } else {
+      setProfessorMarkdown(null);
+    }
+    setMarkdownConverted(false);
     
     // Dispatch custom event to trigger capture
     const captureEvent = new CustomEvent('nous-grade-capture-request', {
@@ -111,8 +175,9 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     }
   };
 
-  const canTranslateToMarkdown = captureState.student && captureState.professor;
-  const canStartGrading = canTranslateToMarkdown; // For now, same condition
+  const canTranslateToMarkdown = captureState.student && captureState.professor && !studentMarkdown && !professorMarkdown;
+  const canStartGrading = studentMarkdown && professorMarkdown;
+
 
   return (
     <div className="grading-overlay">
@@ -131,9 +196,17 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               <h3>Student Answer</h3>
               <div className="capture-area">
                 {studentImageData ? (
-                  <div className="captured-image">
-                    <img src={studentImageData} alt="Student Answer" />
-                    <div className="capture-status captured">✓ Captured</div>
+                  <div className="captured-content">
+                    <div className="captured-image">
+                      <img src={studentImageData} alt="Student Answer" />
+                      <div className="capture-status captured">✓ Captured</div>
+                    </div>
+                    {studentMarkdown && (
+                      <div className="markdown-content">
+                        <h4>Converted Text:</h4>
+                        <div className="markdown-text">{studentMarkdown}</div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="capture-placeholder">
@@ -153,9 +226,17 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               <h3>Professor Answer</h3>
               <div className="capture-area">
                 {professorImageData ? (
-                  <div className="captured-image">
-                    <img src={professorImageData} alt="Professor Answer" />
-                    <div className="capture-status captured">✓ Captured</div>
+                  <div className="captured-content">
+                    <div className="captured-image">
+                      <img src={professorImageData} alt="Professor Answer" />
+                      <div className="capture-status captured">✓ Captured</div>
+                    </div>
+                    {professorMarkdown && (
+                      <div className="markdown-content">
+                        <h4>Converted Text:</h4>
+                        <div className="markdown-text">{professorMarkdown}</div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="capture-placeholder">
@@ -190,6 +271,27 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
             {isProcessing ? 'Grading...' : 'Start Grading'}
           </button>
         </div>
+
+        {/* Grading Results */}
+        {gradingResult && (
+          <div className="grading-results">
+            <h3>Grading Results</h3>
+            <div className="grading-score">
+              <span className="points-earned">{gradingResult.points}</span>
+              <span className="points-separator"> / </span>
+              <span className="points-total">{gradingResult.maxPoints}</span>
+              <div className="points-label">Points</div>
+            </div>
+            <div className="grading-feedback">
+              <h4>Feedback:</h4>
+              <p>{gradingResult.feedback}</p>
+            </div>
+            <div className="grading-reasoning">
+              <h4>Reasoning:</h4>
+              <p>{gradingResult.reasoning}</p>
+            </div>
+          </div>
+        )}
 
         {/* Status */}
         <div className="status-section">

@@ -83,7 +83,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
 
         case 'CONVERT_IMAGE_TO_MARKDOWN':
-          handleImageToMarkdown(message.imageData, message.type, sender);
+          handleConvertToMarkdown(sender);
           sendResponse({ success: true });
           break;
 
@@ -380,20 +380,17 @@ async function handleCaptureCompleteFromPopup(imageData: string, captureType: 's
       }
     }
 
-    // Auto-convert to markdown if both images are captured
+    // Check if both images are captured and update UI state
     const session = sessionManager.getCurrentSession();
     if (session && session.studentImageData && session.professorImageData) {
-      console.log('🟢 Both images captured, starting auto-conversion');
+      console.log('🟢 Both images captured, ready for manual markdown conversion');
       
-      // Convert student answer
-      if (!session.studentMarkdown) {
-        handleImageToMarkdown(session.studentImageData, 'student', sender);
-      }
-      
-      // Convert professor answer
-      if (!session.professorMarkdown) {
-        handleImageToMarkdown(session.professorImageData, 'professor', sender);
-      }
+      // Update processing state to show both images are ready
+      sessionManager.updateProcessingState({
+        status: 'processing',
+        progress: 30,
+        message: 'Both images captured. Click "Translate to Markdown" to continue.'
+      });
     }
 
   } catch (error) {
@@ -481,6 +478,58 @@ function handleStartGrading(studentImageData: string, professorImageData: string
       }
     });
   }, 2000);
+}
+
+// Handle convert to markdown button click
+async function handleConvertToMarkdown(sender: chrome.runtime.MessageSender) {
+  console.log('🟢 Starting manual markdown conversion for both images');
+  
+  try {
+    const session = sessionManager.getCurrentSession();
+    if (!session?.studentImageData || !session?.professorImageData) {
+      throw new Error('Both images must be captured before conversion');
+    }
+
+    // Ensure backend session is created before starting conversions
+    try {
+      await backendAPI.createSession();
+      console.log('🟢 Backend session ensured before image conversions');
+    } catch (error) {
+      console.error('🔴 Failed to ensure backend session:', error);
+      throw error;
+    }
+
+    // Convert both images sequentially to avoid race conditions
+    await handleImageToMarkdown(session.studentImageData, 'student', sender);
+    await handleImageToMarkdown(session.professorImageData, 'professor', sender);
+
+    // Update final state
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: 'Both answers converted. Review and edit if needed.'
+    });
+
+    // Notify UI that markdown conversion is complete
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_ALL_COMPLETE',
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+    }
+
+  } catch (error) {
+    console.error('🔴 Manual markdown conversion failed:', error);
+    sessionManager.updateProcessingState({
+      status: 'error',
+      progress: 0,
+      message: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 }
 
 // Handle image to markdown conversion
@@ -661,22 +710,17 @@ async function handleCaptureCompleteFromContentScript(
     
     console.log('🟢', captureType, 'capture data stored successfully');
     
-    // Check if we have both images and start auto-conversion
+    // Check if we have both images and update UI state
     const session = sessionManager.getCurrentSession();
     if (session?.studentImageData && session?.professorImageData) {
-      console.log('🟢 Both images captured, starting auto-conversion');
+      console.log('🟢 Both images captured, ready for manual markdown conversion');
       
-      // Ensure backend session is created before starting conversions
-      try {
-        await backendAPI.createSession();
-        console.log('🟢 Backend session ensured before image conversions');
-      } catch (error) {
-        console.error('🔴 Failed to ensure backend session:', error);
-      }
-      
-      // Start markdown conversion for both images sequentially to avoid race conditions
-      await handleImageToMarkdown(session.studentImageData!, 'student', sender);
-      await handleImageToMarkdown(session.professorImageData!, 'professor', sender);
+      // Update processing state to show both images are ready
+      sessionManager.updateProcessingState({
+        status: 'processing',
+        progress: 30,
+        message: 'Both images captured. Click "Translate to Markdown" to continue.'
+      });
     }
     
   } catch (error) {

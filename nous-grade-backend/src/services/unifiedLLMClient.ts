@@ -12,7 +12,7 @@ export interface LLMConfig {
   };
   anthropic: {
     apiKey: string;
-    gradingModel: string; // 'claude-3-opus-20240229'
+    gradingModel: string; // 'claude-3-5-sonnet-20241022'
     feedbackModel: string; // 'claude-3-5-sonnet-20241022'
   };
 }

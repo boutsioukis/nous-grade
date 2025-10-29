@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const OpenAI = require('openai');
 
 // Load environment variables
-dotenv.config({ path: './environment.env' });
+dotenv.config({ path: '../.env' });
 
 const app = express();
 const port = process.env.PORT || 3001;

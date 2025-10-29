@@ -146,7 +146,7 @@ async function checkAIServicesHealth(detailed: boolean = false): Promise<any> {
       },
       anthropic: {
         status: process.env.ANTHROPIC_API_KEY ? 'configured' : 'not_configured',
-        models: ['claude-3-opus-20240229', 'claude-3-5-sonnet-20241022']
+        models: ['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20241022']
       },
       lastChecked: new Date().toISOString()
     };
@@ -156,7 +156,7 @@ async function checkAIServicesHealth(detailed: boolean = false): Promise<any> {
         ...baseHealth,
         configuration: {
           ocrModel: 'gpt-4o-mini',
-          gradingModel: 'claude-3-opus-20240229',
+          gradingModel: 'claude-3-5-sonnet-20241022',
           feedbackModel: 'claude-3-5-sonnet-20241022'
         },
         rateLimits: {
