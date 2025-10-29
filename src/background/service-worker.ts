@@ -87,6 +87,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'CONVERT_MULTIPLE_IMAGES_TO_MARKDOWN':
+          handleConvertMultipleImagesToMarkdown(message.studentImages, message.professorImages, sender);
+          sendResponse({ success: true });
+          break;
+
         case 'PROCESS_GRADING':
           handleProcessGrading(sender);
           sendResponse({ success: true });
@@ -523,6 +528,143 @@ async function handleConvertToMarkdown(sender: chrome.runtime.MessageSender) {
 
   } catch (error) {
     console.error('🔴 Manual markdown conversion failed:', error);
+    sessionManager.updateProcessingState({
+      status: 'error',
+      progress: 0,
+      message: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+// Handle multiple images to markdown conversion
+async function handleConvertMultipleImagesToMarkdown(
+  studentImages: Array<{id: string, imageData: string, timestamp: number}>, 
+  professorImages: Array<{id: string, imageData: string, timestamp: number}>, 
+  sender: chrome.runtime.MessageSender
+) {
+  console.log('🟢 Starting multiple images markdown conversion');
+  console.log(`🟢 Student images: ${studentImages.length}, Professor images: ${professorImages.length}`);
+  
+  try {
+    // Ensure backend session is created before starting conversions
+    try {
+      await backendAPI.createSession();
+      console.log('🟢 Backend session ensured before multiple image conversions');
+    } catch (error) {
+      console.error('🔴 Failed to ensure backend session:', error);
+      throw error;
+    }
+
+    // Convert all student images and combine results
+    let combinedStudentMarkdown = '';
+    for (let i = 0; i < studentImages.length; i++) {
+      const image = studentImages[i];
+      console.log(`🟢 Converting student image ${i + 1}/${studentImages.length}`);
+      
+      sessionManager.updateProcessingState({
+        status: 'converting-student',
+        progress: 20 + (i / studentImages.length) * 20,
+        message: `Converting student image ${i + 1} of ${studentImages.length}...`
+      });
+
+      const request = {
+        imageData: image.imageData,
+        type: 'student' as const
+      };
+
+      const result = await backendAPI.convertImageToMarkdown(request);
+      
+      if (result.success) {
+        if (studentImages.length > 1) {
+          combinedStudentMarkdown += `## Student Answer - Image ${i + 1}\n\n${result.markdown}\n\n`;
+        } else {
+          combinedStudentMarkdown = result.markdown;
+        }
+      } else {
+        throw new Error(`Failed to convert student image ${i + 1}: ${result.error}`);
+      }
+    }
+
+    // Convert all professor images and combine results
+    let combinedProfessorMarkdown = '';
+    for (let i = 0; i < professorImages.length; i++) {
+      const image = professorImages[i];
+      console.log(`🟢 Converting professor image ${i + 1}/${professorImages.length}`);
+      
+      sessionManager.updateProcessingState({
+        status: 'converting-professor',
+        progress: 40 + (i / professorImages.length) * 20,
+        message: `Converting professor image ${i + 1} of ${professorImages.length}...`
+      });
+
+      const request = {
+        imageData: image.imageData,
+        type: 'professor' as const
+      };
+
+      const result = await backendAPI.convertImageToMarkdown(request);
+      
+      if (result.success) {
+        if (professorImages.length > 1) {
+          combinedProfessorMarkdown += `## Professor Answer - Image ${i + 1}\n\n${result.markdown}\n\n`;
+        } else {
+          combinedProfessorMarkdown = result.markdown;
+        }
+      } else {
+        throw new Error(`Failed to convert professor image ${i + 1}: ${result.error}`);
+      }
+    }
+
+    // Store combined markdown in session
+    await sessionManager.storeMarkdown('student', combinedStudentMarkdown);
+    await sessionManager.storeMarkdown('professor', combinedProfessorMarkdown);
+
+    // Update final state
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: 'All images converted. Review and edit if needed.'
+    });
+
+    // Send success messages to UI for both types
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      // Send student markdown completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_COMPLETE',
+        captureType: 'student',
+        markdown: combinedStudentMarkdown,
+        confidence: 0.95, // Average confidence
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+
+      // Send professor markdown completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_COMPLETE',
+        captureType: 'professor',
+        markdown: combinedProfessorMarkdown,
+        confidence: 0.95, // Average confidence
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+
+      // Send overall completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_ALL_COMPLETE',
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+    }
+
+    console.log('🟢 Multiple images markdown conversion completed successfully');
+
+  } catch (error) {
+    console.error('🔴 Multiple images markdown conversion failed:', error);
     sessionManager.updateProcessingState({
       status: 'error',
       progress: 0,

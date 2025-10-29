@@ -10,6 +10,13 @@ interface CaptureState {
   professor: boolean;
 }
 
+interface ImageData {
+  id: string;
+  imageData: string;
+  timestamp: number;
+  markdown?: string;
+}
+
 const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   
   const [captureState, setCaptureState] = useState<CaptureState>({
@@ -17,8 +24,8 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     professor: false
   });
   
-  const [studentImageData, setStudentImageData] = useState<string | null>(null);
-  const [professorImageData, setProfessorImageData] = useState<string | null>(null);
+  const [studentImages, setStudentImages] = useState<ImageData[]>([]);
+  const [professorImages, setProfessorImages] = useState<ImageData[]>([]);
   const [studentMarkdown, setStudentMarkdown] = useState<string | null>(null);
   const [professorMarkdown, setProfessorMarkdown] = useState<string | null>(null);
   const [gradingResult, setGradingResult] = useState<any | null>(null);
@@ -36,12 +43,18 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       if (success && imageData) {
         setCaptureState(prev => ({ ...prev, [captureType]: true }));
         
+        const newImage: ImageData = {
+          id: `${captureType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          imageData,
+          timestamp: Date.now()
+        };
+        
         if (captureType === 'student') {
-          setStudentImageData(imageData);
-          console.log('🟢 Student image set, data length:', imageData.length);
+          setStudentImages(prev => [...prev, newImage]);
+          console.log('🟢 Student image added, total images:', studentImages.length + 1);
         } else if (captureType === 'professor') {
-          setProfessorImageData(imageData);
-          console.log('🟢 Professor image set, data length:', imageData.length);
+          setProfessorImages(prev => [...prev, newImage]);
+          console.log('🟢 Professor image added, total images:', professorImages.length + 1);
         }
       }
     };
@@ -116,7 +129,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const handleCaptureClick = async (type: 'student' | 'professor') => {
     console.log(`🟢 Starting capture for ${type}`);
     
-    // Reset markdown states when new capture starts
+    // Reset markdown states when new capture starts (since we'll need to re-convert all images)
     if (type === 'student') {
       setStudentMarkdown(null);
     } else {
@@ -132,25 +145,53 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     console.log(`🟢 ${type} capture request sent successfully`);
   };
 
+  const handleRemoveImage = (type: 'student' | 'professor', imageId: string) => {
+    console.log(`🟢 Removing ${type} image:`, imageId);
+    
+    if (type === 'student') {
+      setStudentImages(prev => prev.filter(img => img.id !== imageId));
+      setStudentMarkdown(null); // Reset markdown since images changed
+    } else {
+      setProfessorImages(prev => prev.filter(img => img.id !== imageId));
+      setProfessorMarkdown(null); // Reset markdown since images changed
+    }
+    setMarkdownConverted(false);
+  };
+
+  const handleClearAllImages = (type: 'student' | 'professor') => {
+    console.log(`🟢 Clearing all ${type} images`);
+    
+    if (type === 'student') {
+      setStudentImages([]);
+      setStudentMarkdown(null);
+      setCaptureState(prev => ({ ...prev, student: false }));
+    } else {
+      setProfessorImages([]);
+      setProfessorMarkdown(null);
+      setCaptureState(prev => ({ ...prev, professor: false }));
+    }
+    setMarkdownConverted(false);
+  };
+
   const handleTranslateToMarkdown = async () => {
-    if (!studentImageData || !professorImageData) {
-      console.error('Both images must be captured before markdown conversion');
+    if (studentImages.length === 0 || professorImages.length === 0) {
+      console.error('Both student and professor images must be captured before markdown conversion');
       return;
     }
 
     setIsConverting(true);
-    console.log('🟢 Starting markdown conversion for both images');
+    console.log('🟢 Starting markdown conversion for multiple images');
     
     try {
-      // Dispatch event to trigger markdown conversion
+      // Dispatch event to trigger markdown conversion with all images
       const convertEvent = new CustomEvent('nous-grade-convert-to-markdown', {
         detail: { 
-          studentImageData,
-          professorImageData
+          studentImages: studentImages,
+          professorImages: professorImages
         }
       });
       document.dispatchEvent(convertEvent);
-      console.log('🟢 Markdown conversion request sent');
+      console.log('🟢 Markdown conversion request sent with multiple images');
     } catch (error) {
       console.error('🔴 Error starting markdown conversion:', error);
       setIsConverting(false);
@@ -175,7 +216,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     }
   };
 
-  const canTranslateToMarkdown = captureState.student && captureState.professor && !studentMarkdown && !professorMarkdown;
+  const canTranslateToMarkdown = studentImages.length > 0 && professorImages.length > 0 && !studentMarkdown && !professorMarkdown;
   const canStartGrading = studentMarkdown && professorMarkdown;
 
 
@@ -193,29 +234,51 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
           <div className="capture-row">
             {/* Student Answer Capture */}
             <div className="capture-item">
-              <h3>Student Answer</h3>
+              <div className="capture-header">
+                <h3>Student Answer ({studentImages.length} image{studentImages.length !== 1 ? 's' : ''})</h3>
+                {studentImages.length > 0 && (
+                  <button 
+                    className="clear-all-button"
+                    onClick={() => handleClearAllImages('student')}
+                    title="Clear all images"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+              
               <div className="capture-area">
-                {studentImageData ? (
-                  <div className="captured-content">
-                    <div className="captured-image">
-                      <img src={studentImageData} alt="Student Answer" />
-                      <div className="capture-status captured">✓ Captured</div>
-                    </div>
-                    {studentMarkdown && (
-                      <div className="markdown-content">
-                        <h4>Converted Text:</h4>
-                        <div className="markdown-text">{studentMarkdown}</div>
+                <div className="images-grid">
+                  {studentImages.map((image, index) => (
+                    <div key={image.id} className="image-item">
+                      <div className="image-header">
+                        <span className="image-number">#{index + 1}</span>
+                        <button 
+                          className="remove-image-button"
+                          onClick={() => handleRemoveImage('student', image.id)}
+                          title="Remove this image"
+                        >
+                          ×
+                        </button>
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="capture-placeholder">
+                      <img src={image.imageData} alt={`Student Answer ${index + 1}`} />
+                    </div>
+                  ))}
+                  
+                  <div className="add-image-placeholder">
                     <button 
                       className="capture-button"
                       onClick={() => handleCaptureClick('student')}
                     >
-                      + Capture Student Answer
+                      + Add Image
                     </button>
+                  </div>
+                </div>
+                
+                {studentMarkdown && (
+                  <div className="markdown-content">
+                    <h4>Converted Text (All Images):</h4>
+                    <div className="markdown-text">{studentMarkdown}</div>
                   </div>
                 )}
               </div>
@@ -223,29 +286,51 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
 
             {/* Professor Answer Capture */}
             <div className="capture-item">
-              <h3>Professor Answer</h3>
+              <div className="capture-header">
+                <h3>Professor Answer ({professorImages.length} image{professorImages.length !== 1 ? 's' : ''})</h3>
+                {professorImages.length > 0 && (
+                  <button 
+                    className="clear-all-button"
+                    onClick={() => handleClearAllImages('professor')}
+                    title="Clear all images"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+              
               <div className="capture-area">
-                {professorImageData ? (
-                  <div className="captured-content">
-                    <div className="captured-image">
-                      <img src={professorImageData} alt="Professor Answer" />
-                      <div className="capture-status captured">✓ Captured</div>
-                    </div>
-                    {professorMarkdown && (
-                      <div className="markdown-content">
-                        <h4>Converted Text:</h4>
-                        <div className="markdown-text">{professorMarkdown}</div>
+                <div className="images-grid">
+                  {professorImages.map((image, index) => (
+                    <div key={image.id} className="image-item">
+                      <div className="image-header">
+                        <span className="image-number">#{index + 1}</span>
+                        <button 
+                          className="remove-image-button"
+                          onClick={() => handleRemoveImage('professor', image.id)}
+                          title="Remove this image"
+                        >
+                          ×
+                        </button>
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="capture-placeholder">
+                      <img src={image.imageData} alt={`Professor Answer ${index + 1}`} />
+                    </div>
+                  ))}
+                  
+                  <div className="add-image-placeholder">
                     <button 
                       className="capture-button"
                       onClick={() => handleCaptureClick('professor')}
                     >
-                      + Capture Professor Answer
+                      + Add Image
                     </button>
+                  </div>
+                </div>
+                
+                {professorMarkdown && (
+                  <div className="markdown-content">
+                    <h4>Converted Text (All Images):</h4>
+                    <div className="markdown-text">{professorMarkdown}</div>
                   </div>
                 )}
               </div>
@@ -296,12 +381,12 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
         {/* Status */}
         <div className="status-section">
           <div className="status-item">
-            <span className={`status-indicator ${captureState.student ? 'active' : 'inactive'}`}></span>
-            Student Answer {captureState.student ? 'Captured' : 'Pending'}
+            <span className={`status-indicator ${studentImages.length > 0 ? 'active' : 'inactive'}`}></span>
+            Student Answer: {studentImages.length} image{studentImages.length !== 1 ? 's' : ''}
           </div>
           <div className="status-item">
-            <span className={`status-indicator ${captureState.professor ? 'active' : 'inactive'}`}></span>
-            Professor Answer {captureState.professor ? 'Captured' : 'Pending'}
+            <span className={`status-indicator ${professorImages.length > 0 ? 'active' : 'inactive'}`}></span>
+            Professor Answer: {professorImages.length} image{professorImages.length !== 1 ? 's' : ''}
           </div>
         </div>
       </div>

@@ -74,25 +74,15 @@ document.addEventListener('nous-grade-convert-to-markdown', (event: Event) => {
     return;
   }
   
-  // Forward the conversion request to the service worker for both images
+  // Forward the conversion request to the service worker with multiple images
   chrome.runtime.sendMessage({
-    type: 'CONVERT_IMAGE_TO_MARKDOWN',
-    imageData: customEvent.detail.studentImageData,
-    imageType: 'student'
+    type: 'CONVERT_MULTIPLE_IMAGES_TO_MARKDOWN',
+    studentImages: customEvent.detail.studentImages,
+    professorImages: customEvent.detail.professorImages
   }).then(response => {
-    console.log('🔵 Student markdown conversion response:', response);
+    console.log('🔵 Multiple images markdown conversion response:', response);
   }).catch(error => {
-    console.error('🔴 Error converting student image:', error);
-  });
-
-  chrome.runtime.sendMessage({
-    type: 'CONVERT_IMAGE_TO_MARKDOWN',
-    imageData: customEvent.detail.professorImageData,
-    imageType: 'professor'
-  }).then(response => {
-    console.log('🔵 Professor markdown conversion response:', response);
-  }).catch(error => {
-    console.error('🔴 Error converting professor image:', error);
+    console.error('🔴 Error converting multiple images:', error);
   });
 });
 
@@ -176,8 +166,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendResponse({ success: true });
   } else if (message.type === 'MARKDOWN_CONVERSION_COMPLETE') {
-    // Forward markdown conversion results to the injected UI
-    console.log('🔵 Forwarding markdown conversion to injected UI:', message);
+    // Forward individual markdown conversion results to the injected UI
+    console.log('🔵 Forwarding individual markdown conversion to injected UI:', message);
 
     const markdownEvent = new CustomEvent('nous-grade-markdown-complete', {
       detail: message

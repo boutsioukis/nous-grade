@@ -26,6 +26,20 @@ const sessions = new Map();
 async function extractTextWithGPT4o(imageData) {
   try {
     console.log('🔍 Starting GPT-4o mini OCR processing...');
+    console.log('🔍 Image data length:', imageData.length);
+    console.log('🔍 Image data format:', imageData.substring(0, 50) + '...');
+    
+    // Validate image data format
+    if (!imageData.startsWith('data:image/')) {
+      console.error('🔴 Invalid image format - missing data:image/ prefix');
+      return {
+        success: false,
+        extractedText: '',
+        confidence: 0,
+        error: 'Invalid image format - must be data URL',
+        model: 'gpt-4o-mini'
+      };
+    }
     
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -35,23 +49,26 @@ async function extractTextWithGPT4o(imageData) {
           content: [
             {
               type: "text",
-              text: "Please extract all text from this image. If it contains mathematical equations, formulas, or diagrams, describe them clearly. Format the output as clean, readable text that preserves the structure and meaning of the original content."
+              text: "You are an expert OCR system. Please extract ALL visible text from this image with high accuracy. This may include:\n\n- Handwritten text\n- Printed text\n- Mathematical equations and formulas\n- Numbers and calculations\n- Diagrams with labels\n- Any other textual content\n\nIMPORTANT: If you can see an image, extract the text from it. If you cannot see any image or if the image appears blank/empty, say 'No image visible or image is blank'.\n\nProvide the extracted text exactly as it appears, preserving structure and formatting where possible."
             },
             {
               type: "image_url",
               image_url: {
-                url: imageData
+                url: imageData,
+                detail: "high"
               }
             }
           ]
         }
       ],
-      max_tokens: 1000,
+      max_tokens: 2000,
       temperature: 0.1
     });
 
     const extractedText = response.choices[0].message.content;
     console.log('🔍 GPT-4o mini OCR completed successfully');
+    console.log('🔍 GPT-4o mini response:', extractedText.substring(0, 200) + '...');
+    console.log('🔍 Response usage:', response.usage);
     
     return {
       success: true,
@@ -318,6 +335,9 @@ app.post('/api/grading/screenshots', async (req, res) => {
 
     // Real GPT-4o mini OCR processing
     console.log(`📸 Processing ${type} screenshot with GPT-4o mini...`);
+    console.log(`📸 Received image data length: ${imageData ? imageData.length : 'null'}`);
+    console.log(`📸 Image data format: ${imageData ? imageData.substring(0, 50) + '...' : 'null'}`);
+    
     const ocrStartTime = Date.now();
     const ocrResult = await extractTextWithGPT4o(imageData);
     
