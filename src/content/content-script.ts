@@ -37,6 +37,10 @@ document.addEventListener('nous-grade-capture-request', (event: Event) => {
     return;
   }
   
+  // Hide the grading UI before starting capture
+  console.log('🔵 Hiding grading UI for capture...');
+  hideGradingUI();
+  
   // Forward the request to the service worker
   console.log('🔵 Forwarding to service worker:', customEvent.detail);
   chrome.runtime.sendMessage({
@@ -46,6 +50,9 @@ document.addEventListener('nous-grade-capture-request', (event: Event) => {
     console.log('🔵 Service worker response:', response);
   }).catch(error => {
     console.error('🔴 Error forwarding capture request:', error);
+    
+    // Restore UI on error
+    showGradingUI();
     
     let errorMessage = error.message;
     if (error.message.includes('Extension context invalidated')) {
@@ -144,6 +151,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       imageDataLength: message.imageData ? message.imageData.length : 0
     });
 
+    // Restore the grading UI after capture completes (success or error)
+    console.log('🔵 Restoring grading UI after capture...');
+    showGradingUI();
+
     const resultEvent = new CustomEvent('nous-grade-capture-result', {
       detail: message
     });
@@ -231,6 +242,22 @@ function injectGradingUI() {
   console.log('Grading UI injected successfully');
 }
 
+// Function to temporarily hide the grading UI during capture
+function hideGradingUI() {
+  if (gradingUI) {
+    gradingUI.style.display = 'none';
+    console.log('🔵 Grading UI hidden for capture');
+  }
+}
+
+// Function to show the grading UI after capture
+function showGradingUI() {
+  if (gradingUI) {
+    gradingUI.style.display = 'block';
+    console.log('🔵 Grading UI restored after capture');
+  }
+}
+
 // Function to remove the grading UI
 function removeGradingUI() {
   if (gradingUI && reactRoot) {
@@ -285,6 +312,10 @@ async function showFullBrowserScreenSelector(screenImageData: string, captureTyp
       onCancel: () => {
         console.log('🔵 Full-browser selection cancelled');
         
+        // Restore the grading UI when capture is cancelled
+        console.log('🔵 Restoring grading UI after capture cancellation...');
+        showGradingUI();
+        
         // Send cancellation message to service worker
         chrome.runtime.sendMessage({
           type: 'CAPTURE_CANCELLED',
@@ -297,6 +328,10 @@ async function showFullBrowserScreenSelector(screenImageData: string, captureTyp
     
   } catch (error) {
     console.error('🔴 Error showing full-browser screen selector:', error);
+    
+    // Restore the grading UI if area selector fails
+    console.log('🔵 Restoring grading UI after area selector error...');
+    showGradingUI();
   }
 }
 
