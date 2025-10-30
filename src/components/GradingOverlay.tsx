@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import './GradingOverlay.css';
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CameraIcon,
+  PlusIcon,
+  BookOpenIcon,
+  CheckCircleIcon,
+  ArrowUpTrayIcon,
+  ArrowPathIcon,
+  XCircleIcon,
+  XMarkIcon,
+  LoadingSpinnerIcon
+} from './Icons';
 
 interface GradingOverlayProps {
   onClose: () => void;
@@ -152,6 +165,20 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     }
   }, [studentMarkdown, professorMarkdown, markdownConverted]);
 
+  // Handle keyboard events
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const handleCaptureClick = async (type: 'student' | 'professor') => {
     console.log(`🟢 Starting capture for ${type}`);
     
@@ -289,21 +316,28 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
 
   return (
     <div className="grading-overlay">
-      <div className="grading-container">
+        <div className="grading-container" role="dialog" aria-labelledby="grading-title" aria-modal="true">
         {/* Header */}
         <div className="grading-header">
-          <h2>Nous-Grade Tool</h2>
-          <button className="close-button" onClick={onClose}>×</button>
+          <h2 id="grading-title">Nous-Grade Tool</h2>
+          <button 
+            className="close-button" 
+            onClick={onClose}
+            aria-label="Close grading tool"
+            autoFocus
+          >
+            ×
+          </button>
         </div>
 
         {/* Capture Section */}
         <div className="capture-section">
           <div className="capture-row">
             {/* Student Answer Capture */}
-            <div className={`capture-item ${panelState.studentCollapsed ? 'collapsed' : ''}`}>
+            <div className={`capture-item ${panelState.studentCollapsed ? 'collapsed' : ''}`} role="region" aria-labelledby="student-panel-title">
               <div className="capture-header">
                 <div className="panel-title-section">
-                  <h3>Student Answer ({studentImages.length} image{studentImages.length !== 1 ? 's' : ''})</h3>
+                  <h3 id="student-panel-title">Student Answer ({studentImages.length} image{studentImages.length !== 1 ? 's' : ''})</h3>
                   {studentImages.length > 0 && !panelState.studentCollapsed && (
                     <button 
                       className="clear-all-button"
@@ -320,17 +354,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   title={panelState.studentCollapsed ? 'Expand panel' : 'Collapse panel'}
                   aria-label={panelState.studentCollapsed ? 'Expand student panel' : 'Collapse student panel'}
                 >
-                  <svg 
+                  <ChevronLeftIcon 
                     className={`chevron-icon ${panelState.studentCollapsed ? 'collapsed' : ''}`}
-                    width="16" 
-                    height="16" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2"
-                  >
-                    <polyline points="15,18 9,12 15,6"></polyline>
-                  </svg>
+                    width={16}
+                    height={16}
+                  />
                 </button>
               </div>
               
@@ -338,19 +366,18 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 <div className="capture-area">
                   {studentImages.length === 0 ? (
                     <div className="empty-state">
-                      <svg className="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                      </svg>
+                      <CameraIcon 
+                        className="empty-state-icon" 
+                        width={48} 
+                        height={48}
+                      />
                       <h4>No Student Answer Captured</h4>
                       <p>Click the button below to capture the student's answer from this tab</p>
                       <button 
                         className="capture-button primary"
                         onClick={() => handleCaptureClick('student')}
                       >
-                        <svg className="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14m-7-7h14"/>
-                        </svg>
+                        <PlusIcon className="button-icon" width={20} height={20} />
                         Capture Student Answer
                       </button>
                     </div>
@@ -377,9 +404,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                         className="capture-button"
                         onClick={() => handleCaptureClick('student')}
                       >
-                        <svg className="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14m-7-7h14"/>
-                        </svg>
+                        <PlusIcon className="button-icon" width={20} height={20} />
                         Capture Student Answer
                       </button>
                     </div>
@@ -396,10 +421,10 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
             </div>
 
             {/* Professor Answer Capture */}
-            <div className={`capture-item ${panelState.professorCollapsed ? 'collapsed' : ''}`}>
+            <div className={`capture-item ${panelState.professorCollapsed ? 'collapsed' : ''}`} role="region" aria-labelledby="professor-panel-title">
               <div className="capture-header">
                 <div className="panel-title-section">
-                  <h3>Professor Answer ({professorImages.length} image{professorImages.length !== 1 ? 's' : ''})</h3>
+                  <h3 id="professor-panel-title">Professor Answer ({professorImages.length} image{professorImages.length !== 1 ? 's' : ''})</h3>
                   {professorImages.length > 0 && !panelState.professorCollapsed && (
                     <button 
                       className="clear-all-button"
@@ -416,17 +441,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   title={panelState.professorCollapsed ? 'Expand panel' : 'Collapse panel'}
                   aria-label={panelState.professorCollapsed ? 'Expand professor panel' : 'Collapse professor panel'}
                 >
-                  <svg 
+                  <ChevronRightIcon 
                     className={`chevron-icon ${panelState.professorCollapsed ? 'collapsed' : ''}`}
-                    width="16" 
-                    height="16" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2"
-                  >
-                    <polyline points="9,18 15,12 9,6"></polyline>
-                  </svg>
+                    width={16}
+                    height={16}
+                  />
                 </button>
               </div>
               
@@ -434,19 +453,18 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 <div className="capture-area">
                   {professorImages.length === 0 ? (
                     <div className="empty-state">
-                      <svg className="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                      </svg>
+                      <CameraIcon 
+                        className="empty-state-icon" 
+                        width={48} 
+                        height={48}
+                      />
                       <h4>No Professor Answer Captured</h4>
                       <p>Click the button below to capture the professor's answer from this tab</p>
                       <button 
                         className="capture-button primary"
                         onClick={() => handleCaptureClick('professor')}
                       >
-                        <svg className="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14m-7-7h14"/>
-                        </svg>
+                        <PlusIcon className="button-icon" width={20} height={20} />
                         Capture Professor Answer
                       </button>
                     </div>
@@ -473,9 +491,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                         className="capture-button"
                         onClick={() => handleCaptureClick('professor')}
                       >
-                        <svg className="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14m-7-7h14"/>
-                        </svg>
+                        <PlusIcon className="button-icon" width={20} height={20} />
                         Capture Professor Answer
                       </button>
                     </div>
@@ -494,7 +510,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
         </div>
 
         {/* Central Control Bar */}
-        <div className="control-bar">
+        <div className="control-bar" role="toolbar" aria-label="Grading actions">
           <div className="control-bar-section">
             <button 
               className={`control-button translate-button ${canTranslateToMarkdown ? 'enabled' : 'disabled'}`}
@@ -502,9 +518,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               disabled={!canTranslateToMarkdown || isConverting}
               title="Convert captured images to text"
             >
-              <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-              </svg>
+              {isConverting ? (
+                <LoadingSpinnerIcon className="button-icon" width={16} height={16} />
+              ) : (
+                <BookOpenIcon className="button-icon" width={16} height={16} />
+              )}
               {isConverting ? 'Converting...' : 'Translate to Markdown'}
             </button>
             
@@ -514,9 +532,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               disabled={!canStartGrading || isProcessing}
               title="Start AI grading process"
             >
-              <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
+              {isProcessing ? (
+                <LoadingSpinnerIcon className="button-icon" width={16} height={16} />
+              ) : (
+                <CheckCircleIcon className="button-icon" width={16} height={16} />
+              )}
               {isProcessing ? 'Grading...' : 'Start Grading'}
             </button>
           </div>
@@ -529,9 +549,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   onClick={() => {/* TODO: Implement export */}}
                   title="Export grading results"
                 >
-                  <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12"/>
-                  </svg>
+                  <ArrowUpTrayIcon className="button-icon" width={16} height={16} />
                   Export Results
                 </button>
                 
@@ -540,9 +558,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   onClick={() => {/* TODO: Implement reset */}}
                   title="Reset for next student"
                 >
-                  <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
+                  <ArrowPathIcon className="button-icon" width={16} height={16} />
                   Next Student
                 </button>
               </>
@@ -552,13 +568,9 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
 
         {/* Error State */}
         {error && (
-          <div className="error-state">
+          <div className="error-state" role="alert" aria-live="polite">
             <div className="error-content">
-              <svg className="error-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
+              <XCircleIcon className="error-icon" width={20} height={20} />
               <div className="error-text">
                 <h4>Something went wrong</h4>
                 <p>{error.message}</p>
@@ -570,9 +582,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 onClick={handleRetry}
                 title="Try the action again"
               >
-                <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
+                <ArrowPathIcon className="button-icon" width={16} height={16} />
                 Retry
               </button>
               <button 
@@ -580,10 +590,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 onClick={() => setError(null)}
                 title="Dismiss this error"
               >
-                <svg className="button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+                <XMarkIcon className="button-icon" width={16} height={16} />
                 Dismiss
               </button>
             </div>
