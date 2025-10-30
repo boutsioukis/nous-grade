@@ -15,6 +15,12 @@ export class SessionManager {
    * Create a new grading session
    */
   async createSession(): Promise<string> {
+    // Check if we already have a session
+    if (this.currentSession) {
+      console.log('🟢 Session already exists, returning existing session:', this.currentSession.sessionId);
+      return this.currentSession.sessionId;
+    }
+    
     const sessionId = this.generateSessionId();
     
     this.currentSession = {
@@ -29,7 +35,9 @@ export class SessionManager {
       'current_session_id': sessionId
     });
 
-    // Reset backend session for new workflow
+    // Reset backend session only when creating a completely new workflow
+    // Note: This will only be called when creating a brand new session,
+    // not when ensuring a session exists (due to the early return check above)
     backendAPI.resetSession();
 
     console.log('🟢 New grading session created:', sessionId);
