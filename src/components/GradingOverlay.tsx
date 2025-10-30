@@ -270,7 +270,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                       className="capture-button"
                       onClick={() => handleCaptureClick('student')}
                     >
-                      + Add Image
+                      📸 Capture Student Answer from this Tab
                     </button>
                   </div>
                 </div>
@@ -322,7 +322,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                       className="capture-button"
                       onClick={() => handleCaptureClick('professor')}
                     >
-                      + Add Image
+                      📸 Capture Professor Answer from this Tab
                     </button>
                   </div>
                 </div>

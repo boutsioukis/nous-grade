@@ -40,7 +40,7 @@ document.addEventListener('nous-grade-capture-request', (event: Event) => {
   // Forward the request to the service worker
   console.log('🔵 Forwarding to service worker:', customEvent.detail);
   chrome.runtime.sendMessage({
-    type: customEvent.detail.type,
+    type: 'START_CAPTURE',
     captureType: customEvent.detail.captureType
   }).then(response => {
     console.log('🔵 Service worker response:', response);
@@ -126,13 +126,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     removeGradingUI();
     sendResponse({ success: true });
   } else if (message.type === 'START_CAPTURE') {
-    handleStartCapture(message.captureType);
-    sendResponse({ success: true });
+    // This should not happen - START_CAPTURE should be handled by service worker
+    console.log('🔴 WARNING: Content script received START_CAPTURE message, but this should be handled by service worker');
+    sendResponse({ success: false, error: 'START_CAPTURE should be handled by service worker' });
   } else if (message.type === 'HANDLE_DESKTOP_CAPTURE') {
-    // Handle desktop capture directly in content script
-    console.log('🔵 Content script handling desktop capture for:', message.captureType);
-    handleDesktopCapture(message.captureType);
-    sendResponse({ success: true });
+    // This handler is deprecated - direct tab capture is now handled in service worker
+    console.log('🔵 DEPRECATED: HANDLE_DESKTOP_CAPTURE message received, but direct tab capture is now used');
+    sendResponse({ success: false, error: 'Deprecated capture method' });
   } else if (message.type === 'CAPTURE_COMPLETE' || message.type === 'CAPTURE_ERROR') {
     // Forward capture results to the injected UI
     console.log('🔵 Forwarding capture result to injected UI:', message);
@@ -243,26 +243,8 @@ function removeGradingUI() {
 }
 
 // Function to handle capture requests
-function handleStartCapture(captureType: 'student' | 'professor') {
-  console.log(`Starting capture for ${captureType}`);
-  
-  // For now, we'll simulate the capture process
-  // In Phase 3, this will integrate with the actual screen capture API
-  
-  // Simulate successful capture after a short delay
-  setTimeout(() => {
-    const mockImageData = `data:image/png;base64,mock-${captureType}-image-data-${Date.now()}`;
-    
-    // Send capture complete message back to service worker
-    chrome.runtime.sendMessage({
-      type: 'CAPTURE_COMPLETE',
-      captureType,
-      imageData: mockImageData
-    });
-    
-    console.log(`Mock capture completed for ${captureType}`);
-  }, 1000);
-}
+// DEPRECATED: Old mock capture function - no longer used
+// Direct tab capture is now handled in the service worker
 
 // Function to show full-browser screen selector
 async function showFullBrowserScreenSelector(screenImageData: string, captureType: 'student' | 'professor') {
@@ -318,36 +300,5 @@ async function showFullBrowserScreenSelector(screenImageData: string, captureTyp
   }
 }
 
-// Function to handle desktop capture requests from service worker
-async function handleDesktopCapture(captureType: 'student' | 'professor') {
-  console.log('🔵 Content script attempting desktop capture for:', captureType);
-  
-  try {
-    // Content scripts can't directly use chrome.desktopCapture API
-    // We need to send a message to trigger popup-based capture
-    
-    // Send a message to the injected UI to show a notification
-    const notificationEvent = new CustomEvent('nous-grade-capture-notification', {
-      detail: {
-        type: 'CAPTURE_INSTRUCTION',
-        captureType: captureType,
-        message: `Please use the extension popup to capture ${captureType} answer. Click the extension icon and use the "Capture ${captureType} Answer" button.`
-      }
-    });
-    document.dispatchEvent(notificationEvent);
-    
-    console.log('🔵 Desktop capture instruction sent to injected UI');
-    
-  } catch (error) {
-    console.error('🔴 Error in handleDesktopCapture:', error);
-    
-    // Send error event to injected UI
-    const errorEvent = new CustomEvent('nous-grade-capture-error', {
-      detail: {
-        captureType: captureType,
-        error: 'Desktop capture must be initiated from extension popup'
-      }
-    });
-    document.dispatchEvent(errorEvent);
-  }
-}
+// DEPRECATED: Old desktop capture function - no longer used
+// Direct tab capture is now handled in the service worker

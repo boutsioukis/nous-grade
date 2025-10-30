@@ -39,19 +39,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   switch (message.type) {
     case 'START_CAPTURE':
-      // Instead of handling capture in service worker, delegate back to content script
-      // This is because Desktop Capture API in Manifest V3 has restrictions when called from service worker
-      console.log('🟢 Delegating capture back to content script for tab:', sender.tab?.id);
+      // Use the new direct tab capture flow
+      console.log('🟢 Starting direct tab capture for:', message.captureType);
       
       if (sender.tab?.id) {
-        chrome.tabs.sendMessage(sender.tab.id, {
-          type: 'HANDLE_DESKTOP_CAPTURE',
-          captureType: message.captureType
-        }).then(() => {
-          console.log('🟢 Desktop capture delegation sent to content script');
-        }).catch(error => {
-          console.error('🔴 Error delegating to content script:', error);
-        });
+        handleStartCapture(message.captureType, sender.tab.id);
+      } else {
+        console.error('🔴 No tab ID available for capture');
       }
       
       sendResponse({ success: true });
@@ -127,105 +121,74 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle capture start requests
 async function handleStartCapture(captureType: 'student' | 'professor', tabId?: number) {
-  console.log(`🟢 Starting capture for ${captureType} on tab ${tabId}`);
+  console.log(`🟢 Starting direct tab capture for ${captureType} on tab ${tabId}`);
   
   try {
-    // Generate unique request ID
-    const requestId = `capture_${captureType}_${Date.now()}`;
-    
-    // Request desktop media access
-    console.log('Requesting desktop media access...');
-    
     // Ensure we have a valid tab ID
-    console.log('🟢 Tab ID received:', tabId);
     if (!tabId) {
-      throw new Error('No tab ID available for desktop capture');
+      throw new Error('No tab ID available for tab capture');
     }
     
-    const streamId = await new Promise<string>((resolve, reject) => {
-      console.log('🟢 Calling chrome.desktopCapture.chooseDesktopMedia...');
-      
-      // Call the API with proper error handling
-      const requestId = chrome.desktopCapture.chooseDesktopMedia(
-        ['screen', 'window', 'tab'],
-        (streamId) => {
-          console.log('🟢 Desktop capture callback called with streamId:', streamId);
-          console.log('🟢 chrome.runtime.lastError:', chrome.runtime.lastError);
-          
+    console.log('🟢 Capturing current tab directly...');
+    
+    // Capture the current tab directly using chrome.tabs.captureVisibleTab
+    const tabImageData = await new Promise<string>((resolve, reject) => {
+      chrome.tabs.captureVisibleTab(
+        { format: 'png', quality: 100 },
+        (dataUrl) => {
           if (chrome.runtime.lastError) {
-            console.error('Desktop capture error:', chrome.runtime.lastError);
-            reject(new Error(chrome.runtime.lastError.message || 'Desktop capture failed'));
+            console.error('Tab capture error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message || 'Tab capture failed'));
             return;
           }
           
-          if (streamId) {
-            console.log('Stream ID received successfully:', streamId);
-            resolve(streamId);
+          if (dataUrl) {
+            console.log('🟢 Tab captured successfully, data length:', dataUrl.length);
+            resolve(dataUrl);
           } else {
-            console.log('No stream ID received - user likely cancelled');
-            reject(new Error('User cancelled screen selection or no stream available'));
+            reject(new Error('No image data received from tab capture'));
           }
         }
       );
-      
-      console.log('🟢 Desktop capture request ID:', requestId);
-      
-      // Set a timeout to detect if the dialog never appears
-      setTimeout(() => {
-        console.log('🔴 Desktop capture timeout - dialog may not have appeared');
-        reject(new Error('Desktop capture dialog timeout - dialog may not have appeared'));
-      }, 30000); // 30 second timeout
     });
 
-    console.log(`Desktop media stream ID obtained: ${streamId}`);
-
-    // Create offscreen document if it doesn't exist
-    await ensureOffscreenDocument();
-
-    // Store the tab ID for this capture request
-    await chrome.storage.local.set({
-      [`request_${requestId}`]: {
-        tabId,
-        captureType,
-        timestamp: Date.now()
-      }
+    console.log('🟢 Sending tab image to content script for area selection...');
+    
+    // Send the tab image directly to content script for area selection
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'SHOW_SCREEN_SELECTOR',
+      screenImageData: tabImageData,
+      captureType: captureType
     });
 
-    // Send capture request to offscreen document
-    chrome.runtime.sendMessage({
-      type: 'START_CAPTURE',
-      streamId,
-      requestId
-    });
-
-    console.log(`Capture request sent to offscreen document for ${captureType}`);
+    if (response?.success) {
+      console.log(`🟢 Tab capture initiated successfully for ${captureType}`);
+    } else {
+      throw new Error('Content script failed to show area selector');
+    }
 
   } catch (error) {
-    console.error('Error starting capture:', error);
+    console.error(`🔴 Error starting capture for ${captureType}:`, error);
     
-    // Determine error type and provide appropriate message
-    let errorMessage = 'Unknown capture error';
-    if (error instanceof Error) {
-      if (error.message.includes('User cancelled')) {
-        errorMessage = 'Screen selection was cancelled. Please try again and select a screen to capture.';
-      } else if (error.message.includes('no stream available')) {
-        errorMessage = 'No screen available for capture. Please ensure you have screens to share.';
-      } else {
-        errorMessage = error.message;
-      }
+    // Update session with error
+    const session = sessionManager.getCurrentSession();
+    if (session) {
+      sessionManager.updateProcessingState({
+        status: 'error',
+        progress: 0,
+        message: `Capture failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
     }
     
-    // Send error back to content script
+    // Send error to content script
     if (tabId) {
-      try {
-        await chrome.tabs.sendMessage(tabId, {
-          type: 'CAPTURE_ERROR',
-          captureType,
-          error: errorMessage
-        });
-      } catch (messageError) {
-        console.log('Could not send error message to tab:', messageError);
-      }
+      chrome.tabs.sendMessage(tabId, {
+        type: 'CAPTURE_ERROR',
+        captureType: captureType,
+        error: error instanceof Error ? error.message : 'Unknown capture error'
+      }).catch(() => {
+        // Ignore if content script not available
+      });
     }
   }
 }
