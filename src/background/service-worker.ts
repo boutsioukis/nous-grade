@@ -430,8 +430,8 @@ function handleStartGrading(studentImageData: string, professorImageData: string
       gradedAnswer: 'Mock graded answer with points allocated',
       points: 8,
       maxPoints: 10,
-      reasoning: 'Student demonstrated good understanding of the concept but missed some key details.',
-      feedback: 'Good work! Consider reviewing the specific requirements mentioned in the question.'
+          suggestedGrade: 'Award 8/10. Accuracy: strong parity with model answer. Methodology: minor steps missing. Presentation: clear.',
+          feedback: 'Good work! Consider reviewing the specific requirements mentioned in the question.'
     };
     
     console.log('Mock grading completed:', mockResult);

@@ -40,7 +40,7 @@ export interface GradingResult {
   gradedAnswer: string;
   points: number;
   maxPoints: number;
-  reasoning: string;
+  suggestedGrade: string;
   feedback: string;
 }
 

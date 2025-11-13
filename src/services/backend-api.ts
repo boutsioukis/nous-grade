@@ -198,12 +198,14 @@ export class BackendAPIService {
             const processingTime = Date.now() - startTime;
             console.log(`🔵 AI grading completed in ${processingTime}ms`);
 
+            const suggestedGrade = results.gradingResult.suggestedGrade || results.gradingResult.feedback || '';
+
             return {
-              gradedAnswer: results.gradingResult.feedback,
+              gradedAnswer: suggestedGrade,
               points: results.gradingResult.score,
               maxPoints: results.gradingResult.maxScore,
-              reasoning: results.gradingResult.reasoning || results.gradingResult.feedback,
-              feedback: results.gradingResult.feedback,
+              suggestedGrade,
+              feedback: results.gradingResult.feedback || suggestedGrade,
               confidence: results.gradingResult.confidence,
               processingTime,
               success: true
@@ -230,7 +232,7 @@ export class BackendAPIService {
         gradedAnswer: '',
         points: 0,
         maxPoints: request.maxPoints || 10,
-        reasoning: '',
+        suggestedGrade: '',
         feedback: '',
         confidence: 0,
         processingTime: Date.now() - startTime,
@@ -249,7 +251,7 @@ export class BackendAPIService {
       score: number;
       maxScore: number;
       feedback: string;
-      reasoning: string;
+      suggestedGrade?: string;
       confidence: number;
     };
     ocrResults: any[];

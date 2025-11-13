@@ -257,13 +257,13 @@ async function processGradingAsync(
       processingTime: gradingResult.processingTime
     });
 
-    // Step 2: Enhance feedback with Claude Sonnet 4
-    console.log(`📝 Enhancing feedback with Claude Sonnet 4`);
-    const enhancedFeedback = await llmClient.generateFeedback(gradingResult, studentOCR, professorOCR);
+    // Step 2: Generate suggested grade message with Claude Sonnet 4
+    console.log(`📝 Generating suggested grade with Claude Sonnet 4`);
+    const suggestedGrade = await llmClient.generateSuggestedGrade(gradingResult, studentOCR, professorOCR);
 
-    console.log(`✅ Claude Sonnet 4 feedback enhancement completed`, {
+    console.log(`✅ Claude Sonnet 4 suggested grade completed`, {
       originalFeedbackLength: gradingResult.feedback.length,
-      enhancedFeedbackLength: enhancedFeedback.length
+      suggestedGradeLength: suggestedGrade.length
     });
 
     // Create final grading result
@@ -274,7 +274,8 @@ async function processGradingAsync(
       professorOcrId: professorOCR.id,
       score: gradingResult.score,
       maxScore: gradingResult.maxScore,
-      feedback: enhancedFeedback, // Use enhanced feedback
+      feedback: gradingResult.feedback,
+      suggestedGrade,
       detailedAnalysis: gradingResult.detailedAnalysis,
       confidence: gradingResult.confidence,
       processingTime: gradingResult.processingTime,
@@ -311,13 +312,13 @@ async function processGradingAsync(
           processingSteps: [
             ...completedSteps,
             {
-              step: 'feedback_enhanced',
+              step: 'suggested_grade_generated',
               status: 'completed',
               startedAt: new Date(),
               completedAt: new Date(),
               metadata: {
                 model: 'claude-3-5-sonnet-20241022',
-                enhancedFeedbackLength: enhancedFeedback.length
+                suggestedGradeLength: suggestedGrade.length
               }
             },
             {

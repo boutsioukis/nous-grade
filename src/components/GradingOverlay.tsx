@@ -16,8 +16,8 @@ interface CaptureImage {
 interface GradingResult {
   points?: number;
   maxPoints?: number;
+  suggestedGrade?: string;
   feedback?: string;
-  reasoning?: string;
   [key: string]: unknown;
 }
 
@@ -380,16 +380,12 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 <p className="grading-result__title">Grading outcome</p>
               </header>
               <div className="grading-result__body">
-                {gradingResult.feedback && (
+          {(gradingResult.suggestedGrade || gradingResult.feedback) && (
                   <div className="grading-result__section">
-                    <p className="grading-result__label">Feedback</p>
-                    <p className="grading-result__text">{gradingResult.feedback}</p>
-                  </div>
-                )}
-                {gradingResult.reasoning && (
-                  <div className="grading-result__section">
-                    <p className="grading-result__label">Reasoning</p>
-                    <p className="grading-result__text">{gradingResult.reasoning}</p>
+              <p className="grading-result__label">Suggested Grade</p>
+              <p className="grading-result__text">
+                {gradingResult.suggestedGrade || gradingResult.feedback}
+              </p>
                   </div>
                 )}
               </div>

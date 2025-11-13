@@ -24,7 +24,7 @@ export interface GradeAnswerResponse {
   gradedAnswer: string;
   points: number;
   maxPoints: number;
-  reasoning: string;
+  suggestedGrade: string;
   feedback: string;
   confidence: number;
   processingTime: number;

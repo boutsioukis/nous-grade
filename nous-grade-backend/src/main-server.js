@@ -149,11 +149,16 @@ REASONING: [reasoning for the grade]`
     const feedback = feedbackMatch ? feedbackMatch[1].trim() : gradingText;
     const reasoning = reasoningMatch ? reasoningMatch[1].trim() : feedback;
     
+    const suggestedGrade = `Suggested grade: ${score}/10 – ${feedback.split('.')[0] || 'See feedback for details.'}
+• Overall (${score}/10): ${reasoning}
+Next step: Review the professor answer to align with the highlighted points.`;
+
     const gradingResult = {
       id: uuidv4(),
       score: score,
       maxScore: 10,
       feedback: feedback,
+      suggestedGrade,
       reasoning: reasoning,
       confidence: 0.92, // GPT-4o mini confidence
       processingTime: Date.now(),
@@ -233,7 +238,6 @@ app.get('/health', (req, res) => {
         ai: { 
           status: 'configured',
           openai: !!process.env.OPENAI_API_KEY,
-          anthropic: !!process.env.ANTHROPIC_API_KEY
         }
       }
     }

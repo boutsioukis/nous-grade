@@ -91,6 +91,7 @@ export interface GradingResult {
   score: number;
   maxScore: number;
   feedback: string;
+  suggestedGrade: string;
   detailedAnalysis: DetailedAnalysis;
   confidence: number;
   processingTime: number;

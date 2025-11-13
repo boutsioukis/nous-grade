@@ -1,34 +1,24 @@
 // Unified LLM Client for orchestrating different AI models
-// GPT-4o mini for OCR, Claude 4 Opus for grading, Claude Sonnet 4 for feedback
+// GPT-4o mini for OCR, grading, and feedback
 
 import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
 import { OCRResult, GradingResult, DetailedAnalysis } from '../types';
 
 export interface LLMConfig {
   openai: {
     apiKey: string;
-    model: string; // 'gpt-4o-mini'
-  };
-  anthropic: {
-    apiKey: string;
-    gradingModel: string; // 'claude-3-5-sonnet-20241022'
-    feedbackModel: string; // 'claude-3-5-sonnet-20241022'
+    model: string; // 'gpt-4o-mini' for OCR, grading, and feedback
   };
 }
 
 export class UnifiedLLMClient {
   private openai: OpenAI;
-  private anthropic: Anthropic;
   private config: LLMConfig;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.openai = new OpenAI({
       apiKey: config.openai.apiKey,
-    });
-    this.anthropic = new Anthropic({
-      apiKey: config.anthropic.apiKey,
     });
   }
 
@@ -102,7 +92,7 @@ export class UnifiedLLMClient {
   }
 
   /**
-   * Grade student answer using Claude 4 Opus
+   * Grade student answer using GPT-4o mini
    * Provides comprehensive analysis and scoring
    */
   async gradeAnswer(
@@ -113,12 +103,12 @@ export class UnifiedLLMClient {
     const startTime = Date.now();
     
     try {
-      console.log('🎯 Starting Claude 4 Opus grading analysis');
+      console.log('🎯 Starting GPT-4o mini grading analysis');
       
       const prompt = this.buildGradingPrompt(studentOCR.extractedText, professorOCR.extractedText, rubric);
       
-      const response = await this.anthropic.messages.create({
-        model: this.config.anthropic.gradingModel,
+      const response = await this.openai.chat.completions.create({
+        model: this.config.openai.model,
         max_tokens: 3000,
         temperature: 0.2, // Low temperature for consistent grading
         messages: [
@@ -129,13 +119,13 @@ export class UnifiedLLMClient {
         ]
       });
 
-      const gradingResponse = response.content[0].type === 'text' ? response.content[0].text : '';
+      const gradingResponse = response.choices[0]?.message?.content || '';
       const processingTime = Date.now() - startTime;
 
       // Parse the structured grading response
       const parsedGrading = this.parseGradingResponse(gradingResponse);
 
-      console.log(`🎯 Claude 4 Opus grading completed in ${processingTime}ms`);
+      console.log(`🎯 GPT-4o mini grading completed in ${processingTime}ms`);
       console.log(`🎯 Score: ${parsedGrading.score}/${parsedGrading.maxScore}`);
       console.log(`🎯 Confidence: ${parsedGrading.confidence}`);
 
@@ -143,36 +133,37 @@ export class UnifiedLLMClient {
         score: parsedGrading.score,
         maxScore: parsedGrading.maxScore,
         feedback: parsedGrading.feedback,
+        suggestedGrade: parsedGrading.suggestedGrade,
         detailedAnalysis: parsedGrading.detailedAnalysis,
         confidence: parsedGrading.confidence,
         processingTime,
-        model: this.config.anthropic.gradingModel
+        model: this.config.openai.model
       };
 
     } catch (error) {
-      console.error('🔴 Claude 4 Opus grading failed:', error);
+      console.error('🔴 GPT-4o mini grading failed:', error);
       throw new Error(`Grading processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Generate enhanced feedback using Claude Sonnet 4
-   * Provides detailed, constructive feedback for students
+   * Generate a concise suggested grade message using GPT-4o mini
+   * Output is designed for quick copy/paste into student feedback
    */
-  async generateFeedback(
+  async generateSuggestedGrade(
     gradingResult: Partial<GradingResult>,
     studentOCR: OCRResult,
     professorOCR: OCRResult
   ): Promise<string> {
     try {
-      console.log('📝 Starting Claude Sonnet 4 feedback generation');
-      
-      const prompt = this.buildFeedbackPrompt(gradingResult, studentOCR.extractedText, professorOCR.extractedText);
-      
-      const response = await this.anthropic.messages.create({
-        model: this.config.anthropic.feedbackModel,
-        max_tokens: 2000,
-        temperature: 0.3, // Slightly higher for more natural feedback
+      console.log('📝 Starting GPT-4o mini suggested grade generation');
+
+      const prompt = this.buildSuggestedGradePrompt(gradingResult, studentOCR.extractedText, professorOCR.extractedText);
+
+      const response = await this.openai.chat.completions.create({
+        model: this.config.openai.model,
+        max_tokens: 1200,
+        temperature: 0.2,
         messages: [
           {
             role: 'user',
@@ -181,17 +172,15 @@ export class UnifiedLLMClient {
         ]
       });
 
-      const enhancedFeedback = response.content[0].type === 'text' ? response.content[0].text : '';
-      
-      console.log('📝 Claude Sonnet 4 feedback generation completed');
-      console.log(`📝 Feedback length: ${enhancedFeedback.length}`);
+      const suggestedGrade = response.choices[0]?.message?.content || '';
 
-      return enhancedFeedback;
+      console.log('📝 GPT-4o mini suggested grade generation completed');
+      console.log(`📝 Suggested grade length: ${suggestedGrade.length}`);
 
+      return suggestedGrade.trim();
     } catch (error) {
-      console.error('🔴 Claude Sonnet 4 feedback generation failed:', error);
-      // Return the original feedback if enhancement fails
-      return gradingResult.feedback || 'Feedback generation failed';
+      console.error('🔴 GPT-4o mini suggested grade generation failed:', error);
+      return gradingResult.feedback || 'Suggested grade unavailable.';
     }
   }
 
@@ -229,7 +218,7 @@ Focus on accuracy over speed. If mathematical notation is unclear, provide your 
   }
 
   /**
-   * Build grading prompt for Claude 4 Opus
+   * Build grading prompt for GPT-4o mini
    */
   private buildGradingPrompt(studentText: string, professorText: string, rubric?: string): string {
     return `You are an expert academic grader with deep expertise in mathematics and educational assessment.
@@ -242,22 +231,21 @@ ${professorText}
 **STUDENT'S ANSWER**:
 ${studentText}
 
-**GRADING RUBRIC** (if provided):
-${rubric || 'Use standard academic grading criteria focusing on correctness, methodology, and clarity.'}
-
 **INSTRUCTIONS**:
 1. Analyze the student's approach and methodology
 2. Check mathematical accuracy and calculations
 3. Evaluate clarity of explanation and presentation
 4. Compare against the professor's model answer
 5. Provide constructive feedback for improvement
+6. Keep rubric reasoning concise (one to two sentences per criterion) and explicitly reference the professor answer when explaining deductions or credit.
 
 Return your response in this JSON format:
 {
   "score": 8,
   "maxScore": 10,
   "confidence": 0.92,
-  "feedback": "Overall assessment summary",
+  "feedback": "Overall assessment summary (for internal use)",
+  "suggestedGrade": "Suggested grade: 8/10 – Short summary sentence.\n• Criterion (points/max): concise reason tied to professor answer\n• ...\nNext step: short encouragement.",
   "detailedAnalysis": {
     "strengths": ["List of what the student did well"],
     "weaknesses": ["Areas needing improvement"],
@@ -267,7 +255,7 @@ Return your response in this JSON format:
         "criterion": "Mathematical Accuracy",
         "points": 4,
         "maxPoints": 4,
-        "feedback": "Specific feedback for this criterion"
+        "feedback": "Brief (<=20 words) explanation referencing the professor answer"
       }
     ],
     "comparisonNotes": "How the student's answer compares to the model answer"
@@ -278,37 +266,32 @@ Be fair, constructive, and specific in your assessment.`;
   }
 
   /**
-   * Build feedback prompt for Claude Sonnet 4
+   * Build suggested grade prompt for GPT-4o mini
    */
-  private buildFeedbackPrompt(
+  private buildSuggestedGradePrompt(
     gradingResult: Partial<GradingResult>,
     studentText: string,
     professorText: string
   ): string {
-    return `You are an expert educational feedback specialist. Your role is to transform grading analysis into encouraging, constructive feedback that helps students learn and improve.
+    const rubricBreakdown = gradingResult.detailedAnalysis?.rubricBreakdown ?? [];
 
-**GRADING ANALYSIS**:
-Score: ${gradingResult.score}/${gradingResult.maxScore}
-Original Feedback: ${gradingResult.feedback}
-Detailed Analysis: ${JSON.stringify(gradingResult.detailedAnalysis, null, 2)}
+    return `You are assisting a professor who has already reviewed the following grading analysis. Write a concise suggested grade message they can copy and paste into the student's feedback box.
 
-**STUDENT'S WORK**:
-${studentText}
+INPUT DATA (for your reference):
+- Score: ${gradingResult.score}/${gradingResult.maxScore}
+- Confidence: ${gradingResult.confidence ?? 'N/A'}
+- Rubric Breakdown: ${JSON.stringify(rubricBreakdown)}
+- Professor Model Answer: ${professorText}
+- Student Answer: ${studentText}
 
-**MODEL ANSWER**:
-${professorText}
+REQUIREMENTS:
+1. Begin with a single line in the format: "Suggested grade: ${gradingResult.score}/${gradingResult.maxScore} – <very short summary>."
+2. Follow with short bullet points (one per rubric item) using the criterion names from the rubric breakdown. Format as "• Criterion (points/max): brief reason referencing the professor answer".
+3. Each reason must explicitly mention what the student did relative to the professor's answer (e.g., "matched the derivative steps shown by the professor", "omitted the justification for ...").
+4. Keep the entire message under 120 words and avoid markdown headers or numbered lists—only the opening sentence and bullet points.
+5. End with one short sentence encouraging the student on the next step (e.g., "Focus next on ...").
 
-**TASK**: Create enhanced, student-friendly feedback that:
-1. Starts with positive reinforcement
-2. Explains what was done well specifically
-3. Identifies areas for improvement with clear explanations
-4. Provides actionable suggestions for next steps
-5. Maintains an encouraging, supportive tone
-6. Uses clear, accessible language
-
-Focus on helping the student understand not just what was wrong, but WHY and HOW to improve. Make the feedback motivational and educational.
-
-Return only the enhanced feedback text (no JSON formatting).`;
+The tone should be professional, supportive, and immediately usable without editing. Return plain text only.`;
   }
 
   /**
@@ -346,13 +329,14 @@ Return only the enhanced feedback text (no JSON formatting).`;
   }
 
   /**
-   * Parse grading response from Claude 4 Opus
+   * Parse grading response from GPT-4o mini
    */
   private parseGradingResponse(response: string): {
     score: number;
     maxScore: number;
     confidence: number;
     feedback: string;
+    suggestedGrade: string;
     detailedAnalysis: DetailedAnalysis;
   } {
     try {
@@ -362,6 +346,7 @@ Return only the enhanced feedback text (no JSON formatting).`;
         maxScore: parsed.maxScore || 10,
         confidence: parsed.confidence || 0.8,
         feedback: parsed.feedback || '',
+        suggestedGrade: parsed.suggestedGrade || parsed.feedback || '',
         detailedAnalysis: parsed.detailedAnalysis || {
           strengths: [],
           weaknesses: [],
@@ -377,6 +362,7 @@ Return only the enhanced feedback text (no JSON formatting).`;
         maxScore: 10,
         confidence: 0.5,
         feedback: response,
+        suggestedGrade: response,
         detailedAnalysis: {
           strengths: [],
           weaknesses: [],
