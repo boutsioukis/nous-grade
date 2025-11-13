@@ -76,7 +76,8 @@ export class DatabaseManager {
   async loadAllSessions(): Promise<GradingSession[]> {
     try {
       const data = await fs.readFile(this.sessionsFile, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return this.reviveDates(parsed);
     } catch (error) {
       console.error('🔴 Failed to load sessions:', error);
       return [];
@@ -158,6 +159,37 @@ export class DatabaseManager {
         completedGradings: 0
       };
     }
+  }
+  /**
+   * Recursively convert ISO date strings back into Date objects.
+   */
+  private reviveDates<T>(value: T): T {
+    if (Array.isArray(value)) {
+      return value.map(item => this.reviveDates(item)) as unknown as T;
+    }
+
+    if (value && typeof value === 'object') {
+      const result: Record<string, unknown> = {};
+
+      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof val === 'string' && this.isIsoDateString(val)) {
+          result[key] = new Date(val);
+        } else {
+          result[key] = this.reviveDates(val);
+        }
+      }
+
+      return result as T;
+    }
+
+    return value;
+  }
+
+  /**
+   * Determine whether a string is an ISO-formatted date.
+   */
+  private isIsoDateString(value: string): boolean {
+    return typeof value === 'string' && value.includes('T') && !Number.isNaN(Date.parse(value));
   }
 }
 

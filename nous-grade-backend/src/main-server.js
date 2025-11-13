@@ -122,13 +122,13 @@ ${studentAnswer}
 ${professorAnswer}
 
 Please provide:
-1. Score (out of 10)
+1. Score (out of total points)
 2. Detailed feedback
 3. Reasoning for the grade
 4. Specific strengths and areas for improvement
 
 Format your response as:
-SCORE: X/10
+SCORE: X/total points
 FEEDBACK: [detailed feedback]
 REASONING: [reasoning for the grade]`
         }

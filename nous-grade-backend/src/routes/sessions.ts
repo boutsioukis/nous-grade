@@ -12,11 +12,9 @@ import {
 } from '../types';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { database } from '../database';
 
 const router = Router();
-
-// In-memory session storage for MVP (replace with database in production)
-const sessions = new Map<string, GradingSession>();
 
 /**
  * POST /api/grading/sessions
@@ -76,7 +74,7 @@ router.post('/', [
   };
 
   // Store session
-  sessions.set(sessionId, session);
+  await database.saveSession(session);
 
   console.log(`🎯 Created new grading session: ${sessionId}`, {
     professorId: session.professorId,
@@ -86,12 +84,13 @@ router.post('/', [
   });
 
   // Update session status
-  updateSessionStatus(sessionId, SessionStatus.AWAITING_SCREENSHOTS, 'awaiting_screenshots');
+  await updateSessionStatus(sessionId, SessionStatus.AWAITING_SCREENSHOTS, 'awaiting_screenshots');
+  const updatedSession = await database.loadSession(sessionId);
 
   const response: CreateSessionResponse = {
     sessionId: session.id,
-    status: session.status,
-    expiresAt: session.expiresAt
+    status: updatedSession?.status ?? session.status,
+    expiresAt: updatedSession?.expiresAt ?? session.expiresAt
   };
 
   res.status(201).json({
@@ -119,7 +118,7 @@ router.get('/:sessionId', [
   }
 
   const sessionId = req.params.sessionId;
-  const session = sessions.get(sessionId);
+  const session = await database.loadSession(sessionId);
 
   if (!session) {
     throw createError(
@@ -132,7 +131,7 @@ router.get('/:sessionId', [
 
   // Check if session is expired
   if (new Date() > session.expiresAt) {
-    updateSessionStatus(sessionId, SessionStatus.EXPIRED, 'session_expired');
+    await updateSessionStatus(sessionId, SessionStatus.EXPIRED, 'session_expired');
     throw createError(
       'Session has expired',
       410,
@@ -172,7 +171,7 @@ router.get('/results/:sessionId', [
   }
 
   const sessionId = req.params.sessionId;
-  const session = sessions.get(sessionId);
+  const session = await database.loadSession(sessionId);
 
   if (!session) {
     throw createError(
@@ -230,9 +229,9 @@ router.delete('/:sessionId', [
   }
 
   const sessionId = req.params.sessionId;
-  const session = sessions.get(sessionId);
+  const deleted = await database.deleteSession(sessionId);
 
-  if (!session) {
+  if (!deleted) {
     throw createError(
       'Session not found',
       404,
@@ -240,9 +239,6 @@ router.delete('/:sessionId', [
       { sessionId }
     );
   }
-
-  // Remove session from storage
-  sessions.delete(sessionId);
 
   console.log(`🗑️ Deleted session: ${sessionId}`);
 
@@ -255,15 +251,13 @@ router.delete('/:sessionId', [
 /**
  * Helper function to update session status
  */
-function updateSessionStatus(sessionId: string, status: SessionStatus, step: string): void {
-  const session = sessions.get(sessionId);
-  if (!session) return;
+async function updateSessionStatus(sessionId: string, status: SessionStatus, step: string): Promise<void> {
+  const session = await database.loadSession(sessionId);
+  if (!session) {
+    return;
+  }
 
   const now = new Date();
-  session.status = status;
-  session.updatedAt = now;
-
-  // Add processing step
   const processingStep: ProcessingStep = {
     step,
     status: 'completed',
@@ -271,26 +265,42 @@ function updateSessionStatus(sessionId: string, status: SessionStatus, step: str
     completedAt: now
   };
 
-  session.metadata.processingSteps.push(processingStep);
-  sessions.set(sessionId, session);
+  const updatedSession: GradingSession = {
+    ...session,
+    status,
+    updatedAt: now,
+    metadata: {
+      ...session.metadata,
+      processingSteps: [...session.metadata.processingSteps, processingStep]
+    }
+  };
+
+  await database.saveSession(updatedSession);
 }
 
 /**
  * Helper function to get session (used by other routes)
  */
-export function getSession(sessionId: string): GradingSession | undefined {
-  return sessions.get(sessionId);
+export async function getSession(sessionId: string): Promise<GradingSession | null> {
+  return database.loadSession(sessionId);
 }
 
 /**
  * Helper function to update session (used by other routes)
  */
-export function updateSession(sessionId: string, updates: Partial<GradingSession>): void {
-  const session = sessions.get(sessionId);
-  if (!session) return;
+export async function updateSession(sessionId: string, updates: Partial<GradingSession>): Promise<void> {
+  const session = await database.loadSession(sessionId);
+  if (!session) {
+    return;
+  }
 
-  Object.assign(session, updates, { updatedAt: new Date() });
-  sessions.set(sessionId, session);
+  const updatedSession: GradingSession = {
+    ...session,
+    ...updates,
+    updatedAt: new Date()
+  };
+
+  await database.saveSession(updatedSession);
 }
 
 export default router;

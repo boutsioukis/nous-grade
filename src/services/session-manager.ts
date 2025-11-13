@@ -17,16 +17,22 @@ export class SessionManager {
   async createSession(): Promise<string> {
     // Check if we already have a session
     if (this.currentSession) {
+      await this.ensureBackendSessionActive();
       console.log('🟢 Session already exists, returning existing session:', this.currentSession.sessionId);
       return this.currentSession.sessionId;
     }
     
+    backendAPI.resetSession();
+    const backendSession = await backendAPI.createSession();
+
     const sessionId = this.generateSessionId();
     
     this.currentSession = {
       sessionId,
       timestamp: Date.now(),
-      status: 'capturing'
+      status: 'capturing',
+      backendSessionId: backendSession.sessionId,
+      backendSessionExpiresAt: backendSession.expiresAt ? Date.parse(backendSession.expiresAt) : undefined
     };
 
     // Store session in Chrome storage
@@ -35,12 +41,9 @@ export class SessionManager {
       'current_session_id': sessionId
     });
 
-    // Reset backend session only when creating a completely new workflow
-    // Note: This will only be called when creating a brand new session,
-    // not when ensuring a session exists (due to the early return check above)
-    backendAPI.resetSession();
-
-    console.log('🟢 New grading session created:', sessionId);
+    console.log('🟢 New grading session created:', sessionId, {
+      backendSessionId: backendSession.sessionId
+    });
     return sessionId;
   }
 
@@ -67,7 +70,8 @@ export class SessionManager {
       if (sessionData) {
         this.currentSession = sessionData;
         console.log('🟢 Session loaded:', targetSessionId);
-        return sessionData;
+        await this.ensureBackendSessionActive();
+        return this.currentSession;
       }
 
       return null;
@@ -130,11 +134,62 @@ export class SessionManager {
   }
 
   /**
+   * Ensure both local and backend sessions are active.
+   */
+  async ensureActiveSession(): Promise<void> {
+    if (!this.currentSession) {
+      const restoredSession = await this.loadSession();
+      if (restoredSession) {
+        return;
+      }
+
+      await this.createSession();
+      return;
+    }
+
+    await this.ensureBackendSessionActive();
+  }
+
+  /**
+   * Make sure the backend session matches the stored metadata.
+   */
+  private async ensureBackendSessionActive(): Promise<void> {
+    if (!this.currentSession) {
+      return;
+    }
+
+    if (this.currentSession.backendSessionId) {
+      backendAPI.resumeSession(
+        this.currentSession.backendSessionId,
+        this.currentSession.backendSessionExpiresAt ?? null
+      );
+    }
+
+    const sessionInfo = await backendAPI.ensureSession();
+    const parsedExpiry = sessionInfo.expiresAt ? Date.parse(sessionInfo.expiresAt) : NaN;
+    const expiresAtMs = Number.isNaN(parsedExpiry) ? undefined : parsedExpiry;
+
+    const backendChanged =
+      !this.currentSession.backendSessionId ||
+      this.currentSession.backendSessionId !== sessionInfo.sessionId ||
+      (this.currentSession.backendSessionExpiresAt ?? null) !== (expiresAtMs ?? null);
+
+    if (backendChanged) {
+      await this.updateSession({
+        backendSessionId: sessionInfo.sessionId,
+        backendSessionExpiresAt: expiresAtMs
+      });
+    }
+  }
+
+  /**
    * Store captured image data
    */
   async storeCapturedImage(type: 'student' | 'professor', imageData: string): Promise<void> {
+    await this.ensureActiveSession();
+
     if (!this.currentSession) {
-      await this.createSession();
+      throw new Error('Failed to initialize session');
     }
 
     const updates: Partial<SessionData> = {};
@@ -169,6 +224,8 @@ export class SessionManager {
    * Store converted markdown
    */
   async storeMarkdown(type: 'student' | 'professor', markdown: string): Promise<void> {
+    await this.ensureActiveSession();
+
     if (!this.currentSession) {
       throw new Error('No active session');
     }
@@ -205,6 +262,8 @@ export class SessionManager {
    * Store grading result
    */
   async storeGradingResult(result: any): Promise<void> {
+    await this.ensureActiveSession();
+
     if (!this.currentSession) {
       throw new Error('No active session');
     }
@@ -225,6 +284,8 @@ export class SessionManager {
    * Clear current session
    */
   async clearSession(): Promise<void> {
+    await backendAPI.endSession();
+
     if (this.currentSession) {
       await chrome.storage.local.remove(`session_${this.currentSession.sessionId}`);
       await chrome.storage.local.remove('current_session_id');

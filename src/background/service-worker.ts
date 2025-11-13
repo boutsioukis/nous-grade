@@ -453,18 +453,10 @@ async function handleConvertToMarkdown(sender: chrome.runtime.MessageSender) {
   console.log('🟢 Starting manual markdown conversion for both images');
   
   try {
+    await sessionManager.ensureActiveSession();
     const session = sessionManager.getCurrentSession();
     if (!session?.studentImageData || !session?.professorImageData) {
       throw new Error('Both images must be captured before conversion');
-    }
-
-    // Ensure backend session is created before starting conversions
-    try {
-      await backendAPI.createSession();
-      console.log('🟢 Backend session ensured before image conversions');
-    } catch (error) {
-      console.error('🔴 Failed to ensure backend session:', error);
-      throw error;
     }
 
     // Convert both images sequentially to avoid race conditions
@@ -510,14 +502,7 @@ async function handleConvertMultipleImagesToMarkdown(
   console.log(`🟢 Student images: ${studentImages.length}, Professor images: ${professorImages.length}`);
   
   try {
-    // Ensure backend session is created before starting conversions
-    try {
-      await backendAPI.createSession();
-      console.log('🟢 Backend session ensured before multiple image conversions');
-    } catch (error) {
-      console.error('🔴 Failed to ensure backend session:', error);
-      throw error;
-    }
+    await sessionManager.ensureActiveSession();
 
     // Convert all student images and combine results
     let combinedStudentMarkdown = '';
@@ -695,6 +680,7 @@ async function handleProcessGrading(sender: chrome.runtime.MessageSender) {
   console.log('🟢 Starting AI grading process');
   
   try {
+    await sessionManager.ensureActiveSession();
     // Get current session data
     const session = sessionManager.getCurrentSession();
     

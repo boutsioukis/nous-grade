@@ -46,7 +46,7 @@ router.post('/grade', [
   const { sessionId } = requestData;
 
   // Get session
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     throw createError(
       'Session not found',
@@ -112,7 +112,7 @@ router.post('/grade', [
     const gradingId = uuidv4();
 
     // Update session status to processing grading
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       status: SessionStatus.PROCESSING_GRADING,
       metadata: {
         ...session.metadata,
@@ -155,7 +155,7 @@ router.post('/grade', [
   } catch (error) {
     console.error(`🔴 Failed to initiate grading for session ${sessionId}:`, error);
 
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       status: SessionStatus.ERROR,
       metadata: {
         ...session.metadata,
@@ -188,7 +188,7 @@ router.post('/grade', [
 router.get('/status/:sessionId', asyncHandler(async (req: Request, res: Response) => {
   const sessionId = req.params.sessionId;
   
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     throw createError(
       'Session not found',
@@ -279,7 +279,7 @@ async function processGradingAsync(
     };
 
     // Update session with completed grading
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (session) {
       const completedSteps = session.metadata.processingSteps.map(step => {
         if (step.step === 'grading_started' && step.status === 'processing') {
@@ -299,7 +299,7 @@ async function processGradingAsync(
         return step;
       });
 
-      updateSession(sessionId, {
+      await updateSession(sessionId, {
         status: SessionStatus.GRADING_COMPLETE,
         gradingResult: finalGradingResult,
         metadata: {
@@ -343,7 +343,7 @@ async function processGradingAsync(
     console.error(`🔴 Grading processing failed for session ${sessionId}:`, error);
 
     // Update session with error
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (session) {
       const failedSteps = session.metadata.processingSteps.map(step => {
         if (step.step === 'grading_started' && step.status === 'processing') {
@@ -357,7 +357,7 @@ async function processGradingAsync(
         return step;
       });
 
-      updateSession(sessionId, {
+      await updateSession(sessionId, {
         status: SessionStatus.ERROR,
         metadata: {
           ...session.metadata,

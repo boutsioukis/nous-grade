@@ -51,7 +51,7 @@ router.post('/', [
   const { sessionId, type, imageData } = requestData;
 
   // Get session
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     throw createError(
       'Session not found',
@@ -124,7 +124,7 @@ router.post('/', [
     session.screenshots.push(screenshot);
     
     // Update session status to processing OCR
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       status: SessionStatus.PROCESSING_OCR,
       screenshots: session.screenshots,
       metadata: {
@@ -194,7 +194,7 @@ router.post('/', [
     // Update session status
     const newStatus = readyForGrading ? SessionStatus.OCR_COMPLETE : SessionStatus.AWAITING_SCREENSHOTS;
     
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       status: newStatus,
       ocrResults: session.ocrResults,
       metadata: {
@@ -251,7 +251,7 @@ router.post('/', [
       return step;
     });
 
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       status: SessionStatus.ERROR,
       metadata: {
         ...session.metadata,
@@ -278,7 +278,7 @@ router.post('/', [
 router.get('/:sessionId', asyncHandler(async (req: Request, res: Response) => {
   const sessionId = req.params.sessionId;
   
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     throw createError(
       'Session not found',

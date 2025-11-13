@@ -35,6 +35,8 @@ export interface GradeAnswerResponse {
 export interface SessionData {
   sessionId: string;
   timestamp: number;
+  backendSessionId?: string;
+  backendSessionExpiresAt?: number;
   studentImageData?: string;
   professorImageData?: string;
   studentMarkdown?: string;
