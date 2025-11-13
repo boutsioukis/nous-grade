@@ -21,11 +21,6 @@ const llmClient = new UnifiedLLMClient({
   openai: {
     apiKey: process.env.OPENAI_API_KEY!,
     model: 'gpt-4o-mini'
-  },
-  anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY!,
-    gradingModel: 'claude-3-5-sonnet-20241022',
-    feedbackModel: 'claude-3-5-sonnet-20241022'
   }
 });
 

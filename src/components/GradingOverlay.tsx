@@ -52,6 +52,8 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [statusMessage, setStatusMessage] = useState<string>(
     'Capture both answers to get started.'
   );
+  const [studentPanelCollapsed, setStudentPanelCollapsed] = useState(false);
+  const [professorPanelCollapsed, setProfessorPanelCollapsed] = useState(false);
 
   useEffect(() => {
     const handleCaptureResult = (event: Event) => {
@@ -335,63 +337,112 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
 
   return (
     <div className="grading-overlay">
-      <div className="grading-panel">
-        <header className="panel-header">
-          <div>
-            <p className="panel-title">Nous Grade</p>
-            <p className="panel-subtitle">Capture, compare, and grade answers in one workspace.</p>
-          </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-            ×
+      <div className={`floating-panel left ${studentPanelCollapsed ? 'collapsed' : ''}`}>
+        {studentPanelCollapsed ? (
+          <button
+            type="button"
+            className="floating-panel__toggle floating-panel__toggle--left"
+            onClick={() => setStudentPanelCollapsed(false)}
+          >
+            Student Answer
           </button>
-        </header>
-
-        <div className="panel-body">
-          <div className="capture-grid">
-            {(['student', 'professor'] as CaptureType[]).map((type) => renderCaptureCard(type))}
+        ) : (
+          <div className="floating-panel__container">
+            <header className="floating-panel__header">
+              <div className="floating-panel__titles">
+                <p className="panel-eyebrow">Student</p>
+                <h2 className="panel-heading">Student Answer</h2>
+              </div>
+              <button
+                type="button"
+                className="collapse-button"
+                onClick={() => setStudentPanelCollapsed(true)}
+              >
+                Hide
+              </button>
+            </header>
+            <div className="floating-panel__body">{renderCaptureCard('student')}</div>
           </div>
+        )}
+      </div>
 
-          <div className="panel-footer">
-            <p className="status-message">{statusMessage}</p>
+      <div className={`floating-panel right ${professorPanelCollapsed ? 'collapsed' : ''}`}>
+        {professorPanelCollapsed ? (
+          <button
+            type="button"
+            className="floating-panel__toggle floating-panel__toggle--right"
+            onClick={() => setProfessorPanelCollapsed(false)}
+          >
+            Professor Answer
+          </button>
+        ) : (
+          <div className="floating-panel__container">
+            <header className="floating-panel__header">
+              <div className="floating-panel__titles">
+                <p className="panel-eyebrow">Professor</p>
+                <h2 className="panel-heading">Professor Answer</h2>
+              </div>
+              <div className="floating-panel__actions">
+                <button
+                  type="button"
+                  className="collapse-button"
+                  onClick={() => setProfessorPanelCollapsed(true)}
+                >
+                  Hide
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={onClose}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+            <div className="floating-panel__body">
+              {renderCaptureCard('professor')}
 
-            <div className="panel-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleTranslateToMarkdown}
-                disabled={!hasBothCaptures || isConverting}
-              >
-                {isConverting ? 'Converting…' : 'Translate to Markdown'}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleStartGrading}
-                disabled={!hasMarkdown || isGrading || isConverting}
-              >
-                {isGrading ? 'Grading…' : 'Run Grading'}
-              </button>
+              <div className="panel-status">
+                <p className="status-message">{statusMessage}</p>
+              </div>
+
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleTranslateToMarkdown}
+                  disabled={!hasBothCaptures || isConverting}
+                >
+                  {isConverting ? 'Converting…' : 'Translate to Markdown'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleStartGrading}
+                  disabled={!hasMarkdown || isGrading || isConverting}
+                >
+                  {isGrading ? 'Grading…' : 'Run Grading'}
+                </button>
+              </div>
+
+              {gradingResult && (gradingResult.suggestedGrade || gradingResult.feedback) && (
+                <section className="grading-result">
+                  <header className="grading-result__header">
+                    <p className="grading-result__title">Suggested Grade</p>
+                  </header>
+                  <div className="grading-result__body">
+                    <div className="grading-result__section">
+                      <p className="grading-result__text">
+                        {gradingResult.suggestedGrade || gradingResult.feedback}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
           </div>
-
-          {gradingResult && (
-            <section className="grading-result">
-              <header className="grading-result__header">
-                <p className="grading-result__title">Grading outcome</p>
-              </header>
-              <div className="grading-result__body">
-          {(gradingResult.suggestedGrade || gradingResult.feedback) && (
-                  <div className="grading-result__section">
-              <p className="grading-result__label">Suggested Grade</p>
-              <p className="grading-result__text">
-                {gradingResult.suggestedGrade || gradingResult.feedback}
-              </p>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
