@@ -249,8 +249,7 @@ export class BackendAPIService {
       console.log(`🔵 Session status after upload: ${response.sessionStatus}`);
       console.log(`🔵 Ready for grading: ${response.readyForGrading}`);
 
-      // Convert the backend response to our expected format
-      const markdown = `# ${request.type === 'student' ? 'Student' : 'Professor'} Answer\n\n${response.ocrResult.extractedText}`;
+      const markdown = this.normalizeExtractedMarkdown(response.ocrResult.extractedText);
 
       return {
         markdown,
@@ -270,6 +269,21 @@ export class BackendAPIService {
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
+  }
+
+  private normalizeExtractedMarkdown(raw: string | undefined): string {
+    if (!raw) {
+      return '';
+    }
+
+    const trimmed = raw.trim();
+    const fencedMatch = trimmed.match(/^```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```$/);
+
+    if (fencedMatch) {
+      return fencedMatch[1].trim();
+    }
+
+    return trimmed;
   }
 
   /**

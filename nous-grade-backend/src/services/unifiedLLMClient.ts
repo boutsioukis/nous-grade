@@ -145,7 +145,22 @@ export class UnifiedLLMClient {
    * Build OCR prompt optimized for mathematical content
    */
   private buildOCRPrompt(_type: 'student_answer' | 'professor_answer'): string {
-    return `CONSIDER THE IMAGE(S) PROVIDED AND PROVIDE A FLAWLESS MARKDOWN OF THE CONTENT. DO NOT SOLVE OR ANSWER ANY OTHER QUESTION, BUT MAKE SURE THAT THE MARKDOWN FLAWLESSLY RESEMBLES THE CONTENT OF THE IMAGE(S).`;
+    return `
+Primary Directive: Your task is to transcribe the visual content from the provided image(s) with 100% accuracy.
+
+Formatting Rules:
+1.  Text: Transcribe all non-mathematical text using standard Markdown (e.g., for headings, lists, or plain text).
+2.  Mathematics: Transcribe all mathematical equations, formulas, variables, and symbols using the appropriate LaTeX syntax.
+
+LaTeX Delimiters:
+* For inline math (mathematics mixed within a line of text), use the $...$ delimiters.
+* For display math (mathematics on its own centered line), use the $$...$$ delimiters.
+
+Strict Guardrail:
+* You must only transcribe the content.
+* Do not solve, simplify, explain, or answer any part of the text or equations.
+* The goal is a perfect, renderable transcription that exactly matches the visual content of the image.
+`;
   }
 
   /**

@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import './GradingOverlay.css';
 
 type CaptureType = 'student' | 'professor';
@@ -37,6 +40,9 @@ const CAPTURE_META: Record<CaptureType, { title: string; eyebrow: string; emptyL
 
 const DEFAULT_STATUS_MESSAGE = 'Capture both answers to get started.';
 
+const MARKDOWN_REMARK_PLUGINS = [remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
+
 const isCaptureType = (value: unknown): value is CaptureType =>
   value === 'student' || value === 'professor';
 
@@ -58,6 +64,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [statusMessage, setStatusMessage] = useState<string>(DEFAULT_STATUS_MESSAGE);
   const [studentPanelCollapsed, setStudentPanelCollapsed] = useState(false);
   const [professorPanelCollapsed, setProfessorPanelCollapsed] = useState(false);
+  const [activeMarkdownEditor, setActiveMarkdownEditor] = useState<CaptureType | null>(null);
   const [actionPanelPosition, setActionPanelPosition] = useState(() => ({
     x: 16,
     y: 16,
@@ -65,6 +72,10 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [isDraggingActionPanel, setIsDraggingActionPanel] = useState(false);
   const actionPanelRef = useRef<HTMLDivElement | null>(null);
   const actionPanelDragOffset = useRef({ x: 0, y: 0 });
+  const markdownEditorsRef = useRef<Record<CaptureType, HTMLTextAreaElement | null>>({
+    student: null,
+    professor: null,
+  });
 
   const clampActionPanelPosition = useCallback((x: number, y: number) => {
     if (typeof window === 'undefined') {
@@ -92,6 +103,12 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     },
     [clampActionPanelPosition]
   );
+
+  useEffect(() => {
+    if (activeMarkdownEditor) {
+      markdownEditorsRef.current[activeMarkdownEditor]?.focus();
+    }
+  }, [activeMarkdownEditor]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -521,13 +538,41 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
         {markdownText !== null && (
           <div className="markdown-block">
             <p className="markdown-block__label">Extracted text</p>
-            <textarea
-              className="markdown-textarea"
-              value={markdownText ?? ''}
-              onChange={(event) => handleMarkdownChange(captureType, event.target.value)}
-              placeholder="Review or edit the markdown before grading."
-              rows={8}
-            />
+            {activeMarkdownEditor === captureType ? (
+              <textarea
+                ref={(node) => {
+                  markdownEditorsRef.current[captureType] = node;
+                }}
+                className="markdown-textarea"
+                value={markdownText ?? ''}
+                onChange={(event) => handleMarkdownChange(captureType, event.target.value)}
+                onBlur={() => setActiveMarkdownEditor(null)}
+                placeholder="Review or edit the markdown before grading."
+                rows={8}
+              />
+            ) : (
+              <div
+                className="markdown-block__preview"
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveMarkdownEditor(captureType)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setActiveMarkdownEditor(captureType);
+                  }
+                }}
+                aria-label={`Edit ${meta.title} markdown`}
+              >
+                <ReactMarkdown
+                  remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+                  rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                >
+                  {markdownText ?? ''}
+                </ReactMarkdown>
+                <p className="markdown-block__hint">Click to edit markdown</p>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -609,7 +654,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   </header>
                   <div className="grading-result__body">
                     <div className="grading-result__section">
-                      <ReactMarkdown className="grading-result__markdown">
+                      <ReactMarkdown
+                        className="grading-result__markdown"
+                        remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+                        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                      >
                         {gradingResult.suggestedGrade || gradingResult.feedback || ''}
                       </ReactMarkdown>
                     </div>
