@@ -73,12 +73,69 @@ document.addEventListener('nous-grade-convert-to-markdown', (event: Event) => {
 });
 
 // Listen for grading requests from injected UI
-document.addEventListener('nous-grade-grading-request', () => {
+document.addEventListener('nous-grade-grading-request', (event: Event) => {
+  const { studentMarkdown, professorMarkdown } = (event as CustomEvent<{
+    studentMarkdown: string;
+    professorMarkdown: string;
+  }>).detail ?? { studentMarkdown: '', professorMarkdown: '' };
+
   if (!chrome.runtime?.id) {
     return;
   }
   
-  chrome.runtime.sendMessage({ type: 'PROCESS_GRADING' });
+  chrome.runtime.sendMessage({
+    type: 'PROCESS_GRADING',
+    studentMarkdown,
+    professorMarkdown,
+  });
+});
+  
+// Listen for next-question requests from injected UI
+document.addEventListener('nous-grade-next-question', () => {
+  if (!chrome.runtime?.id) {
+    document.dispatchEvent(
+      new CustomEvent('nous-grade-session-cleared', {
+        detail: {
+          success: false,
+          error: 'Extension context invalidated. Please refresh the page and try again.',
+        },
+      })
+    );
+    return;
+  }
+
+  chrome.runtime
+    .sendMessage({ type: 'CLEAR_SESSION' })
+    .catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to reset session. Please try again.';
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-session-cleared', {
+          detail: {
+            success: false,
+            error: message,
+          },
+        })
+      );
+    });
+});
+
+// Listen for manual markdown edits from UI
+document.addEventListener('nous-grade-markdown-update', (event: Event) => {
+  const { captureType, markdown } = (event as CustomEvent<{
+    captureType: 'student' | 'professor';
+    markdown: string;
+  }>).detail ?? {};
+
+  if (!chrome.runtime?.id || !captureType) {
+    return;
+  }
+  
+  chrome.runtime.sendMessage({
+    type: 'UPDATE_MARKDOWN',
+    captureType,
+    markdown,
+  });
 });
 
 // Listen for messages from the service worker
@@ -135,6 +192,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     case 'SHOW_SCREEN_SELECTOR':
     showFullBrowserScreenSelector(message.screenImageData, message.captureType);
     sendResponse({ success: true });
+      break;
+    case 'SESSION_CLEARED':
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-session-cleared', {
+          detail: message,
+        })
+      );
+      sendResponse({ success: true });
       break;
     default:
       sendResponse({ success: false, error: 'Unknown message type' });

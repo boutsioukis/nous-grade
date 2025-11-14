@@ -1,4 +1,5 @@
 // AI grading processing routes
+import '../config/env';
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,7 +30,10 @@ const llmClient = new UnifiedLLMClient({
  * Trigger AI grading process
  */
 router.post('/grade', [
-  body('sessionId').isUUID().withMessage('Invalid session ID format')
+  body('sessionId').isUUID().withMessage('Invalid session ID format'),
+  body('studentAnswer').optional().isString().withMessage('Student answer must be a string'),
+  body('professorAnswer').optional().isString().withMessage('Professor answer must be a string'),
+  body('modelAnswer').optional().isString().withMessage('Model answer must be a string')
 ], asyncHandler(async (req: Request, res: Response) => {
   // Validate request
   const errors = validationResult(req);
@@ -100,11 +104,38 @@ router.post('/grade', [
     );
   }
 
+  const providedStudentText = typeof requestData.studentAnswer === 'string'
+    ? requestData.studentAnswer.trim()
+    : '';
+  const providedProfessorTextRaw = typeof requestData.professorAnswer === 'string'
+    ? requestData.professorAnswer
+    : typeof requestData.modelAnswer === 'string'
+      ? requestData.modelAnswer
+      : '';
+  const providedProfessorText = providedProfessorTextRaw.trim();
+
+  const studentText = providedStudentText || studentOCR.extractedText;
+  const professorText = providedProfessorText || professorOCR.extractedText;
+
+  if (!studentText || !professorText) {
+    throw createError(
+      'Missing answer text for grading',
+      400,
+      'MISSING_TEXT_FOR_GRADING',
+      {
+        hasStudentText: Boolean(studentText),
+        hasProfessorText: Boolean(professorText)
+      }
+    );
+  }
+
   console.log(`🎯 Starting AI grading for session ${sessionId}`, {
-    studentTextLength: studentOCR.extractedText.length,
-    professorTextLength: professorOCR.extractedText.length,
+    studentTextLength: studentText.length,
+    professorTextLength: professorText.length,
     studentConfidence: studentOCR.confidence,
-    professorConfidence: professorOCR.confidence
+    professorConfidence: professorOCR.confidence,
+    manualStudentOverride: providedStudentText.length > 0,
+    manualProfessorOverride: providedProfessorText.length > 0
   });
 
   try {
@@ -126,7 +157,11 @@ router.post('/grade', [
               gradingId,
               model: 'claude-3-5-sonnet-20241022',
               studentOcrId: studentOCR.id,
-              professorOcrId: professorOCR.id
+              professorOcrId: professorOCR.id,
+              manualStudentOverride: providedStudentText.length > 0,
+              manualProfessorOverride: providedProfessorText.length > 0,
+              studentTextLength: studentText.length,
+              professorTextLength: professorText.length
             }
           }
         ]
@@ -150,7 +185,16 @@ router.post('/grade', [
     });
 
     // Process grading asynchronously
-    processGradingAsync(sessionId, gradingId, studentOCR, professorOCR);
+    processGradingAsync(
+      sessionId,
+      gradingId,
+      studentText,
+      professorText,
+      {
+        studentOcrId: studentOCR.id,
+        professorOcrId: professorOCR.id
+      }
+    );
 
   } catch (error) {
     console.error(`🔴 Failed to initiate grading for session ${sessionId}:`, error);
@@ -233,17 +277,23 @@ router.get('/status/:sessionId', asyncHandler(async (req: Request, res: Response
 /**
  * Process grading asynchronously
  */
+interface GradingContext {
+  studentOcrId?: string | null;
+  professorOcrId?: string | null;
+}
+
 async function processGradingAsync(
   sessionId: string, 
   gradingId: string, 
-  studentOCR: any, 
-  professorOCR: any
+  studentText: string, 
+  professorText: string,
+  context: GradingContext = {}
 ): Promise<void> {
   try {
     console.log(`🎯 Processing grading for session ${sessionId} with Claude 4 Opus`);
 
     // Step 1: Grade with Claude 4 Opus
-    const gradingResult = await llmClient.gradeAnswer(studentOCR, professorOCR);
+    const gradingResult = await llmClient.gradeAnswer(studentText, professorText);
 
     console.log(`✅ Claude 4 Opus grading completed`, {
       score: gradingResult.score,
@@ -254,7 +304,7 @@ async function processGradingAsync(
 
     // Step 2: Generate suggested grade message with Claude Sonnet 4
     console.log(`📝 Generating suggested grade with Claude Sonnet 4`);
-    const suggestedGrade = await llmClient.generateSuggestedGrade(gradingResult, studentOCR, professorOCR);
+    const suggestedGrade = await llmClient.generateSuggestedGrade(gradingResult, studentText, professorText);
 
     console.log(`✅ Claude Sonnet 4 suggested grade completed`, {
       originalFeedbackLength: gradingResult.feedback.length,
@@ -265,8 +315,8 @@ async function processGradingAsync(
     const finalGradingResult: GradingResult = {
       id: gradingId,
       sessionId,
-      studentOcrId: studentOCR.id,
-      professorOcrId: professorOCR.id,
+      studentOcrId: context.studentOcrId ?? 'manual-input',
+      professorOcrId: context.professorOcrId ?? 'manual-input',
       score: gradingResult.score,
       maxScore: gradingResult.maxScore,
       feedback: gradingResult.feedback,

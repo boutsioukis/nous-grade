@@ -1,4 +1,5 @@
 // Authentication middleware
+import '../config/env';
 import { Request, Response, NextFunction } from 'express';
 import { createError } from './errorHandler';
 

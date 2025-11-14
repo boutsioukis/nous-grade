@@ -96,16 +96,16 @@ export class UnifiedLLMClient {
    * Provides comprehensive analysis and scoring
    */
   async gradeAnswer(
-    studentOCR: OCRResult, 
-    professorOCR: OCRResult, 
-    rubric?: string
+    studentText: string, 
+    professorText: string, 
+    options: { rubric?: string } = {}
   ): Promise<Omit<GradingResult, 'id' | 'sessionId' | 'studentOcrId' | 'professorOcrId' | 'gradedAt'>> {
     const startTime = Date.now();
     
     try {
       console.log('🎯 Starting GPT-4o mini grading analysis');
       
-      const prompt = this.buildGradingPrompt(studentOCR.extractedText, professorOCR.extractedText, rubric);
+      const prompt = this.buildGradingPrompt(studentText, professorText, options.rubric);
       
       const response = await this.openai.chat.completions.create({
         model: this.config.openai.model,
@@ -152,13 +152,13 @@ export class UnifiedLLMClient {
    */
   async generateSuggestedGrade(
     gradingResult: Partial<GradingResult>,
-    studentOCR: OCRResult,
-    professorOCR: OCRResult
+    studentText: string,
+    professorText: string
   ): Promise<string> {
     try {
       console.log('📝 Starting GPT-4o mini suggested grade generation');
 
-      const prompt = this.buildSuggestedGradePrompt(gradingResult, studentOCR.extractedText, professorOCR.extractedText);
+      const prompt = this.buildSuggestedGradePrompt(gradingResult, studentText, professorText);
 
       const response = await this.openai.chat.completions.create({
         model: this.config.openai.model,
@@ -221,48 +221,13 @@ Focus on accuracy over speed. If mathematical notation is unclear, provide your 
    * Build grading prompt for GPT-4o mini
    */
   private buildGradingPrompt(studentText: string, professorText: string, rubric?: string): string {
-    return `You are an expert academic grader with deep expertise in mathematics and educational assessment.
+    return `You are an experienced tutor that is grading the exams of the students. You are only supposed to use the solutions that you are given and are attached below. I want you to give me the exact points that should be awared in the student by FIRST analyzing his answer and SECOND checking them by the grading scheme.
 
-**TASK**: Grade the student's answer by comparing it to the professor's model answer.
-
-**PROFESSOR'S MODEL ANSWER**:
+**MODEL ANSWER**:
 ${professorText}
 
 **STUDENT'S ANSWER**:
-${studentText}
-
-**INSTRUCTIONS**:
-1. Analyze the student's approach and methodology
-2. Check mathematical accuracy and calculations
-3. Evaluate clarity of explanation and presentation
-4. Compare against the professor's model answer
-5. Provide constructive feedback for improvement
-6. Keep rubric reasoning concise (one to two sentences per criterion) and explicitly reference the professor answer when explaining deductions or credit.
-
-Return your response in this JSON format:
-{
-  "score": 8,
-  "maxScore": 10,
-  "confidence": 0.92,
-  "feedback": "Overall assessment summary (for internal use)",
-  "suggestedGrade": "Suggested grade: 8/10 – Short summary sentence.\n• Criterion (points/max): concise reason tied to professor answer\n• ...\nNext step: short encouragement.",
-  "detailedAnalysis": {
-    "strengths": ["List of what the student did well"],
-    "weaknesses": ["Areas needing improvement"],
-    "suggestions": ["Specific recommendations"],
-    "rubricBreakdown": [
-      {
-        "criterion": "Mathematical Accuracy",
-        "points": 4,
-        "maxPoints": 4,
-        "feedback": "Brief (<=20 words) explanation referencing the professor answer"
-      }
-    ],
-    "comparisonNotes": "How the student's answer compares to the model answer"
-  }
-}
-
-Be fair, constructive, and specific in your assessment.`;
+${studentText}`;
   }
 
   /**
@@ -331,7 +296,7 @@ The tone should be professional, supportive, and immediately usable without edit
   /**
    * Parse grading response from GPT-4o mini
    */
-  private parseGradingResponse(response: string): {
+  private parseGradingResponse(rawResponse: string): {
     score: number;
     maxScore: number;
     confidence: number;
@@ -339,6 +304,7 @@ The tone should be professional, supportive, and immediately usable without edit
     suggestedGrade: string;
     detailedAnalysis: DetailedAnalysis;
   } {
+    const response = rawResponse.trim();
     try {
       const parsed = JSON.parse(response);
       return {
@@ -356,10 +322,24 @@ The tone should be professional, supportive, and immediately usable without edit
         }
       };
     } catch (error) {
-      console.warn('Failed to parse grading response as JSON, using fallback');
+      console.warn('Failed to parse grading response as JSON, attempting heuristic parsing');
+
+      const ratioMatch = response.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+      const pointsMatch = response.match(/(\d+(?:\.\d+)?)\s*(?:points?|pts?)/i);
+
+      let score = 0;
+      let maxScore = 10;
+
+      if (ratioMatch) {
+        score = Number.parseFloat(ratioMatch[1]);
+        maxScore = Number.parseFloat(ratioMatch[2]) || maxScore;
+      } else if (pointsMatch) {
+        score = Number.parseFloat(pointsMatch[1]);
+      }
+
       return {
-        score: 0,
-        maxScore: 10,
+        score: Number.isFinite(score) ? score : 0,
+        maxScore: Number.isFinite(maxScore) ? maxScore : 10,
         confidence: 0.5,
         feedback: response,
         suggestedGrade: response,

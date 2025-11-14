@@ -71,3 +71,4 @@ jspm_packages/
 # Temporary files
 *.tmp
 *.temp
+nous-grade-backend/data/sessions.json

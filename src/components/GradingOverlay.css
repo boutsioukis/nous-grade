@@ -377,6 +377,24 @@
   font-size: 12px;
 }
 
+.ghost-button--danger {
+  color: #73b418;
+  border-color: #d9fcd1;
+  background: #dbfaa9;
+}
+
+.ghost-button--danger:hover:not(:disabled) {
+  background: #fee4e2;
+  border-color: #caf966;
+}
+
+.ghost-button--danger:disabled {
+  color: #98a2b3;
+  border-color: #e4e7ec;
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
 .capture-trigger {
   border: 1px dashed #cfd4dc;
   border-radius: 10px;
@@ -424,6 +442,34 @@
   word-break: break-word;
   max-height: 160px;
   overflow-y: auto;
+}
+
+.markdown-textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #344054;
+  background: #ffffff;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.markdown-textarea:focus {
+  outline: none;
+  border-color: #155eef;
+  box-shadow: 0 0 0 3px rgba(21, 94, 239, 0.15);
+}
+
+.markdown-textarea:disabled {
+  background: #f9fafb;
+  color: #98a2b3;
+  cursor: not-allowed;
 }
 
 .status-message {

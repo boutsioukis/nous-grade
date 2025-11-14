@@ -1,4 +1,5 @@
 // Session management routes
+import '../config/env';
 import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { v4 as uuidv4 } from 'uuid';

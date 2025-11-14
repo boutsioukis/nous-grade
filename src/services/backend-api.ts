@@ -297,7 +297,9 @@ export class BackendAPIService {
         {
           method: 'POST',
           body: JSON.stringify({
-            sessionId: sessionInfo.sessionId
+            sessionId: sessionInfo.sessionId,
+            studentAnswer: request.studentAnswer,
+            professorAnswer: request.modelAnswer
           }),
           headers: {
             'Content-Type': 'application/json',
@@ -355,7 +357,7 @@ export class BackendAPIService {
       return {
         gradedAnswer: '',
         points: 0,
-        maxPoints: request.maxPoints || 10,
+        maxPoints: 10,
         suggestedGrade: '',
         feedback: '',
         confidence: 0,

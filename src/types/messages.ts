@@ -8,10 +8,6 @@ export interface MessageTypes {
     type: 'student' | 'professor';
     imageData: string;
   };
-  'START_GRADING': { 
-    studentImageData: string;
-    professorImageData: string;
-  };
   'GRADING_COMPLETE': { 
     result: GradingResult;
   };

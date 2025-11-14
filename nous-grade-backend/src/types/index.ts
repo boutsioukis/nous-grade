@@ -161,6 +161,9 @@ export interface UploadScreenshotResponse {
 
 export interface TriggerGradingRequest {
   sessionId: string;
+  studentAnswer?: string;
+  professorAnswer?: string;
+  modelAnswer?: string;
 }
 
 export interface TriggerGradingResponse {

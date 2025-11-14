@@ -1,4 +1,5 @@
 // Health check routes
+import '../config/env';
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 

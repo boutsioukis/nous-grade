@@ -5,8 +5,9 @@
   "main": "dist/app.js",
   "scripts": {
     "build": "tsc",
-    "start": "node src/main-server.js",
-    "dev": "nodemon src/main-server.js",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node src/server.ts\"",
     "test": "echo \"Error: no test specified\" && exit 1",
     "db:migrate": "node dist/database/migrate.js",
     "db:seed": "node dist/database/seed.js",
@@ -24,7 +25,6 @@
   "author": "Nous-Grade Team",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.67.0",
     "axios": "^1.13.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

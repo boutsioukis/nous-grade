@@ -1,4 +1,5 @@
 // Global error handling middleware
+import '../config/env';
 import { Request, Response, NextFunction } from 'express';
 import { APIError, ErrorCode } from '../types';
 

@@ -24,7 +24,7 @@ export class SessionManager {
     
     backendAPI.resetSession();
     const backendSession = await backendAPI.createSession();
-
+    
     const sessionId = this.generateSessionId();
     
     this.currentSession = {

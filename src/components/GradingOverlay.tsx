@@ -34,6 +34,8 @@ const CAPTURE_META: Record<CaptureType, { title: string; eyebrow: string; emptyL
   },
 };
 
+const DEFAULT_STATUS_MESSAGE = 'Capture both answers to get started.';
+
 const isCaptureType = (value: unknown): value is CaptureType =>
   value === 'student' || value === 'professor';
 
@@ -49,9 +51,8 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [gradingResult, setGradingResult] = useState<GradingResult | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>(
-    'Capture both answers to get started.'
-  );
+  const [isResetting, setIsResetting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>(DEFAULT_STATUS_MESSAGE);
   const [studentPanelCollapsed, setStudentPanelCollapsed] = useState(false);
   const [professorPanelCollapsed, setProfessorPanelCollapsed] = useState(false);
 
@@ -63,7 +64,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       }
 
       const captureType: CaptureType = detail.captureType;
-
+      
       if (detail.success && detail.imageData) {
         const nextImage: CaptureImage = {
           id:
@@ -101,7 +102,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       const detail = (event as CustomEvent).detail ?? {};
       if (isCaptureType(detail.captureType)) {
         const captureType: CaptureType = detail.captureType;
-
+      
         if (detail.success && detail.markdown) {
           setMarkdown((prev) => ({
             ...prev,
@@ -113,7 +114,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
         }
       } else if (detail.success) {
         setStatusMessage('Markdown conversion complete.');
-      }
+        }
       setIsConverting(false);
     };
 
@@ -135,6 +136,28 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       setIsGrading(false);
     };
 
+    const handleSessionCleared = (event: Event) => {
+      const detail = (event as CustomEvent).detail ?? {};
+      
+      if (detail.success) {
+        setCaptures({ student: [], professor: [] });
+        setMarkdown({ student: null, professor: null });
+        setGradingResult(null);
+        setIsConverting(false);
+        setIsGrading(false);
+        setIsResetting(false);
+        setStatusMessage(DEFAULT_STATUS_MESSAGE);
+        setStudentPanelCollapsed(false);
+        setProfessorPanelCollapsed(false);
+      } else if (detail.error) {
+        setStatusMessage(detail.error);
+        setIsResetting(false);
+      } else {
+        setStatusMessage('Unable to reset session. Please try again.');
+        setIsResetting(false);
+      }
+    };
+
     document.addEventListener('nous-grade-capture-result', handleCaptureResult as EventListener);
     document.addEventListener('nous-grade-capture-error', handleCaptureError as EventListener);
     document.addEventListener('nous-grade-markdown-complete', handleMarkdownComplete as EventListener);
@@ -143,6 +166,10 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       handleProcessingUpdate as EventListener
     );
     document.addEventListener('nous-grade-grading-complete', handleGradingComplete as EventListener);
+    document.addEventListener(
+      'nous-grade-session-cleared',
+      handleSessionCleared as EventListener
+    );
 
     return () => {
       document.removeEventListener(
@@ -164,6 +191,10 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
       document.removeEventListener(
         'nous-grade-grading-complete',
         handleGradingComplete as EventListener
+      );
+      document.removeEventListener(
+        'nous-grade-session-cleared',
+        handleSessionCleared as EventListener
       );
     };
   }, []);
@@ -211,6 +242,14 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     }));
     setGradingResult(null);
     setStatusMessage(`${CAPTURE_META[captureType].title} cleared.`);
+
+    const updateEvent = new CustomEvent('nous-grade-markdown-update', {
+      detail: {
+        captureType,
+        markdown: '',
+      },
+    });
+    document.dispatchEvent(updateEvent);
   };
 
   const handleTranslateToMarkdown = () => {
@@ -225,14 +264,14 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     setIsConverting(true);
     setStatusMessage('Translating images to markdown…');
     setGradingResult(null);
-
-    const convertEvent = new CustomEvent('nous-grade-convert-to-markdown', {
-      detail: {
+    
+      const convertEvent = new CustomEvent('nous-grade-convert-to-markdown', {
+        detail: { 
         studentImages,
         professorImages,
       },
-    });
-    document.dispatchEvent(convertEvent);
+      });
+      document.dispatchEvent(convertEvent);
   };
 
   const handleStartGrading = () => {
@@ -244,8 +283,40 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     setIsGrading(true);
     setStatusMessage('Running grading…');
 
-    const gradingEvent = new CustomEvent('nous-grade-grading-request', { detail: {} });
-    document.dispatchEvent(gradingEvent);
+      const gradingEvent = new CustomEvent('nous-grade-grading-request', {
+      detail: {
+        studentMarkdown: markdown.student ?? '',
+        professorMarkdown: markdown.professor ?? '',
+      },
+      });
+      document.dispatchEvent(gradingEvent);
+  };
+
+  const handleMarkdownChange = (captureType: CaptureType, value: string) => {
+    setMarkdown((prev) => ({
+      ...prev,
+      [captureType]: value,
+    }));
+    setGradingResult(null);
+    setStatusMessage(`${CAPTURE_META[captureType].title} markdown updated.`);
+
+    const updateEvent = new CustomEvent('nous-grade-markdown-update', {
+      detail: {
+        captureType,
+        markdown: value,
+      },
+    });
+    document.dispatchEvent(updateEvent);
+  };
+
+  const handleNextQuestion = () => {
+    setIsResetting(true);
+    setIsConverting(false);
+    setIsGrading(false);
+    setStatusMessage('Clearing current session…');
+
+    const nextEvent = new CustomEvent('nous-grade-next-question');
+    document.dispatchEvent(nextEvent);
   };
 
   const hasBothCaptures = captures.student.length > 0 && captures.professor.length > 0;
@@ -256,7 +327,7 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
     const markdownText = markdown[captureType];
     const meta = CAPTURE_META[captureType];
 
-    return (
+  return (
       <section key={captureType} className="capture-card">
         <header className="capture-card__header">
           <div>
@@ -266,21 +337,21 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
           {captureList.length > 0 && (
             <div className="capture-card__headerActions">
               <span className="capture-card__badge">{captureList.length}</span>
-              <button
+      <button 
                 type="button"
                 className="link-button"
                 onClick={() => handleCapture(captureType)}
-              >
+      >
                 Add another
-              </button>
-              <button
+      </button>
+      <button 
                 type="button"
                 className="link-button link-button--muted"
                 onClick={() => handleClearCaptures(captureType)}
-              >
+      >
                 Clear all
-              </button>
-            </div>
+      </button>
+          </div>
           )}
         </header>
 
@@ -300,21 +371,21 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   <div key={image.id} className="capture-card__item">
                     <div className="capture-card__thumb">
                       <img src={image.imageData} alt={`${meta.title} ${index + 1}`} />
-                    </div>
+        </div>
                     <div className="capture-card__itemFooter">
                       <span className="capture-card__itemLabel">Image {index + 1}</span>
-                      <button
+                    <button 
                         type="button"
                         className="ghost-button ghost-button--small"
                         onClick={() => handleRemoveCapture(captureType, image.id)}
                       >
                         Remove
-                      </button>
-                    </div>
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
               </div>
-              <button
+              <button 
                 type="button"
                 className="ghost-button"
                 onClick={() => handleCapture(captureType)}
@@ -322,13 +393,19 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 Add another capture
               </button>
             </>
-          )}
+            )}
         </div>
 
-        {markdownText && (
+        {markdownText !== null && (
           <div className="markdown-block">
             <p className="markdown-block__label">Extracted text</p>
-            <pre className="markdown-block__content">{markdownText}</pre>
+            <textarea
+              className="markdown-textarea"
+              value={markdownText ?? ''}
+              onChange={(event) => handleMarkdownChange(captureType, event.target.value)}
+              placeholder="Review or edit the markdown before grading."
+              rows={8}
+            />
           </div>
         )}
       </section>
@@ -381,16 +458,16 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               <div className="floating-panel__titles">
                 <p className="panel-eyebrow">Professor</p>
                 <h2 className="panel-heading">Professor Answer</h2>
-              </div>
+          </div>
               <div className="floating-panel__actions">
-                <button
+                    <button 
                   type="button"
                   className="collapse-button"
                   onClick={() => setProfessorPanelCollapsed(true)}
                 >
                   Hide
-                </button>
-                <button
+                    </button>
+                <button 
                   type="button"
                   className="icon-button"
                   onClick={onClose}
@@ -405,26 +482,34 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
 
               <div className="panel-status">
                 <p className="status-message">{statusMessage}</p>
-              </div>
+      </div>
 
               <div className="panel-actions">
-                <button
+      <button 
                   type="button"
                   className="primary-button"
                   onClick={handleTranslateToMarkdown}
-                  disabled={!hasBothCaptures || isConverting}
-                >
+                  disabled={!hasBothCaptures || isConverting || isResetting}
+      >
                   {isConverting ? 'Converting…' : 'Translate to Markdown'}
-                </button>
-                <button
+      </button>
+            <button 
                   type="button"
                   className="secondary-button"
                   onClick={handleStartGrading}
-                  disabled={!hasMarkdown || isGrading || isConverting}
+                  disabled={!hasMarkdown || isGrading || isConverting || isResetting}
                 >
                   {isGrading ? 'Grading…' : 'Run Grading'}
-                </button>
-              </div>
+            </button>
+            <button 
+                  type="button"
+                  className="ghost-button ghost-button--danger"
+                  onClick={handleNextQuestion}
+                  disabled={isResetting}
+            >
+                  {isResetting ? 'Preparing…' : 'Next Question'}
+            </button>
+          </div>
 
               {gradingResult && (gradingResult.suggestedGrade || gradingResult.feedback) && (
                 <section className="grading-result">
@@ -436,13 +521,13 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                       <p className="grading-result__text">
                         {gradingResult.suggestedGrade || gradingResult.feedback}
                       </p>
-                    </div>
-                  </div>
+            </div>
+            </div>
                 </section>
               )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     </div>
   );

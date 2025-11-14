@@ -1,12 +1,12 @@
 // Main Express application for Nous-Grade Backend
 // Production-ready server with session-based API architecture
 
+import './config/env';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 
 // Import routes
@@ -19,9 +19,6 @@ import healthRoutes from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { validateApiKey } from './middleware/auth';
-
-// Load environment variables
-dotenv.config({ path: '../.env' });
 
 class NousGradeServer {
   private app: express.Application;
@@ -129,8 +126,8 @@ class NousGradeServer {
       });
     });
 
-    // 404 handler for unknown routes
-    this.app.use('*', (req, res) => {
+    // 404 handler for unknown routes (must not use wildcard path with Express 5)
+    this.app.use((req, res) => {
       res.status(404).json({
         error: 'Endpoint not found',
         message: `The requested endpoint ${req.originalUrl} does not exist`,

@@ -1,5 +1,3 @@
-// Backend API types and interfaces for Phase 4
-
 export interface ImageToMarkdownRequest {
   imageData: string; // Base64 encoded image
   type: 'student' | 'professor';
@@ -16,14 +14,12 @@ export interface ImageToMarkdownResponse {
 export interface GradeAnswerRequest {
   studentAnswer: string;
   modelAnswer: string;
-  gradingScheme?: string;
-  maxPoints?: number;
 }
 
 export interface GradeAnswerResponse {
   gradedAnswer: string;
   points: number;
-  maxPoints: number;
+  maxPoints?: number;
   suggestedGrade: string;
   feedback: string;
   confidence: number;
@@ -58,7 +54,7 @@ export const API_ENDPOINTS = {
   GRADE_ANSWER: '/api/grading/grade',
   HEALTH_CHECK: '/health',
   CREATE_SESSION: '/api/grading/sessions',
-  GET_RESULTS: '/api/grading/results'
+  GET_RESULTS: '/api/grading/sessions/results'
 } as const;
 
 // Default backend configuration

@@ -71,11 +71,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
-        case 'START_GRADING':
-          handleStartGrading(message.studentImageData, message.professorImageData);
-          sendResponse({ success: true });
-          break;
-
         case 'CONVERT_IMAGE_TO_MARKDOWN':
           handleConvertToMarkdown(sender);
           sendResponse({ success: true });
@@ -87,7 +82,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
 
         case 'PROCESS_GRADING':
-          handleProcessGrading(sender);
+          handleProcessGrading(sender, message.studentMarkdown, message.professorMarkdown);
+          sendResponse({ success: true });
+          break;
+        case 'UPDATE_MARKDOWN':
+          handleUpdateMarkdown(message.captureType, message.markdown, sender);
           sendResponse({ success: true });
           break;
 
@@ -417,37 +416,6 @@ async function handleProcessStream(streamId: string, captureType: 'student' | 'p
 }
 
 // Handle grading start requests
-function handleStartGrading(studentImageData: string, professorImageData: string) {
-  console.log('Starting grading process...');
-  console.log(`Student image data length: ${studentImageData.length}`);
-  console.log(`Professor image data length: ${professorImageData.length}`);
-  
-  // For now, we'll simulate the grading process
-  // In Phase 4, this will integrate with the backend API
-  
-  setTimeout(() => {
-    const mockResult = {
-      gradedAnswer: 'Mock graded answer with points allocated',
-      points: 8,
-      maxPoints: 10,
-          suggestedGrade: 'Award 8/10. Accuracy: strong parity with model answer. Methodology: minor steps missing. Presentation: clear.',
-          feedback: 'Good work! Consider reviewing the specific requirements mentioned in the question.'
-    };
-    
-    console.log('Mock grading completed:', mockResult);
-    
-    // Send result back to content script
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: 'GRADING_COMPLETE',
-          result: mockResult
-        });
-      }
-    });
-  }, 2000);
-}
-
 // Handle convert to markdown button click
 async function handleConvertToMarkdown(sender: chrome.runtime.MessageSender) {
   console.log('🟢 Starting manual markdown conversion for both images');
@@ -676,11 +644,23 @@ async function handleImageToMarkdown(imageData: string, type: 'student' | 'profe
 }
 
 // Handle grading process
-async function handleProcessGrading(sender: chrome.runtime.MessageSender) {
+async function handleProcessGrading(
+  sender: chrome.runtime.MessageSender,
+  studentMarkdown?: string,
+  professorMarkdown?: string
+) {
   console.log('🟢 Starting AI grading process');
   
   try {
     await sessionManager.ensureActiveSession();
+    if (typeof studentMarkdown === 'string') {
+      await sessionManager.updateSession({ studentMarkdown });
+    }
+
+    if (typeof professorMarkdown === 'string') {
+      await sessionManager.updateSession({ professorMarkdown });
+    }
+
     // Get current session data
     const session = sessionManager.getCurrentSession();
     
@@ -700,8 +680,7 @@ async function handleProcessGrading(sender: chrome.runtime.MessageSender) {
 
     const request: GradeAnswerRequest = {
       studentAnswer: session.studentMarkdown,
-      modelAnswer: session.professorMarkdown,
-      maxPoints: 10
+      modelAnswer: session.professorMarkdown
     };
 
     const result = await backendAPI.gradeAnswer(request);
@@ -739,6 +718,45 @@ async function handleProcessGrading(sender: chrome.runtime.MessageSender) {
   }
 }
 
+async function handleUpdateMarkdown(
+  captureType: 'student' | 'professor',
+  markdown: string,
+  sender: chrome.runtime.MessageSender
+) {
+  try {
+    await sessionManager.ensureActiveSession();
+
+    if (captureType === 'student') {
+      await sessionManager.updateSession({ studentMarkdown: markdown });
+    } else {
+      await sessionManager.updateSession({ professorMarkdown: markdown });
+    }
+
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: `${captureType === 'student' ? 'Student' : 'Professor'} markdown edited.`
+    });
+  } catch (error) {
+    console.error('🔴 Failed to persist markdown update:', error);
+
+    const targetTabId = sender.tab?.id;
+    if (targetTabId) {
+      await chrome.tabs
+        .sendMessage(targetTabId, {
+          type: 'PROCESSING_STATE_UPDATE',
+          state: {
+            status: 'error',
+            progress: 0,
+            message: error instanceof Error ? error.message : 'Failed to save markdown changes.',
+            error: error instanceof Error ? error.message : 'Failed to save markdown changes.',
+          },
+        })
+        .catch(() => undefined);
+    }
+  }
+}
+
 // Handle session state requests
 async function handleGetSessionState(sender: chrome.runtime.MessageSender) {
   const session = sessionManager.getCurrentSession();
@@ -759,16 +777,42 @@ async function handleGetSessionState(sender: chrome.runtime.MessageSender) {
 
 // Handle session clearing
 async function handleClearSession(sender: chrome.runtime.MessageSender) {
-  await sessionManager.clearSession();
-  
+  let payload: { type: string; success: boolean; sessionId?: string; error?: string };
+
+  try {
+    await sessionManager.clearSession();
+    const newSessionId = await sessionManager.createSession();
+    sessionManager.updateProcessingState({
+      status: 'idle',
+      progress: 0,
+      message: 'Capture both answers to get started.'
+    });
+
+    payload = {
+      type: 'SESSION_CLEARED',
+      success: true,
+      sessionId: newSessionId
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to reset session. Please try again.';
+    payload = {
+      type: 'SESSION_CLEARED',
+      success: false,
+      error: errorMessage
+    };
+  }
+
+  const targetTabId = sender.tab?.id;
+
+  if (targetTabId) {
+    await chrome.tabs.sendMessage(targetTabId, payload).catch(() => undefined);
+    return;
+  }
+
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tabs[0]?.id) {
-    chrome.tabs.sendMessage(tabs[0].id, {
-      type: 'SESSION_CLEARED',
-      success: true
-    }).catch(() => {
-      // Ignore if content script not available
-    });
+    await chrome.tabs.sendMessage(tabs[0].id, payload).catch(() => undefined);
   }
 }
 
