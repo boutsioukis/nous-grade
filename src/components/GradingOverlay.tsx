@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './GradingOverlay.css';
 
 type CaptureType = 'student' | 'professor';
@@ -39,6 +39,8 @@ const DEFAULT_STATUS_MESSAGE = 'Capture both answers to get started.';
 const isCaptureType = (value: unknown): value is CaptureType =>
   value === 'student' || value === 'professor';
 
+const ACTION_PANEL_KEYBOARD_STEP = 16;
+
 const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [captures, setCaptures] = useState<Record<CaptureType, CaptureImage[]>>({
     student: [],
@@ -55,6 +57,125 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
   const [statusMessage, setStatusMessage] = useState<string>(DEFAULT_STATUS_MESSAGE);
   const [studentPanelCollapsed, setStudentPanelCollapsed] = useState(false);
   const [professorPanelCollapsed, setProfessorPanelCollapsed] = useState(false);
+  const [actionPanelPosition, setActionPanelPosition] = useState(() => ({
+    x: 16,
+    y: 16,
+  }));
+  const [isDraggingActionPanel, setIsDraggingActionPanel] = useState(false);
+  const actionPanelRef = useRef<HTMLDivElement | null>(null);
+  const actionPanelDragOffset = useRef({ x: 0, y: 0 });
+
+  const clampActionPanelPosition = useCallback((x: number, y: number) => {
+    if (typeof window === 'undefined') {
+      return { x, y };
+    }
+
+    const panel = actionPanelRef.current;
+    const panelWidth = panel?.offsetWidth ?? 0;
+    const panelHeight = panel?.offsetHeight ?? 0;
+    const padding = 12;
+    const maxX = Math.max(window.innerWidth - panelWidth - padding, padding);
+    const maxY = Math.max(window.innerHeight - panelHeight - padding, padding);
+
+    return {
+      x: Math.min(Math.max(padding, x), maxX),
+      y: Math.min(Math.max(padding, y), maxY),
+    };
+  }, []);
+
+  const moveActionPanel = useCallback(
+    (deltaX: number, deltaY: number) => {
+      setActionPanelPosition((prev) =>
+        clampActionPanelPosition(prev.x + deltaX, prev.y + deltaY)
+      );
+    },
+    [clampActionPanelPosition]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const panel = actionPanelRef.current;
+    const panelWidth = panel?.offsetWidth ?? 0;
+    const panelHeight = panel?.offsetHeight ?? 0;
+
+    const initialX = (window.innerWidth - panelWidth) / 2;
+    const initialY = window.innerHeight - panelHeight - 40;
+
+    setActionPanelPosition(clampActionPanelPosition(initialX, initialY));
+
+    const handleResize = () => {
+      setActionPanelPosition((prev) => clampActionPanelPosition(prev.x, prev.y));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [clampActionPanelPosition]);
+
+  const handleActionPanelPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    setIsDraggingActionPanel(true);
+    actionPanelDragOffset.current = {
+      x: event.clientX - actionPanelPosition.x,
+      y: event.clientY - actionPanelPosition.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleActionPanelKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? ACTION_PANEL_KEYBOARD_STEP * 2 : ACTION_PANEL_KEYBOARD_STEP;
+
+    switch (event.key) {
+      case 'ArrowUp':
+        event.preventDefault();
+        moveActionPanel(0, -step);
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        moveActionPanel(0, step);
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        moveActionPanel(-step, 0);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        moveActionPanel(step, 0);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleActionPanelPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingActionPanel) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextX = event.clientX - actionPanelDragOffset.current.x;
+    const nextY = event.clientY - actionPanelDragOffset.current.y;
+
+    setActionPanelPosition(clampActionPanelPosition(nextX, nextY));
+  };
+
+  const endActionPanelDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingActionPanel) {
+      return;
+    }
+
+    setIsDraggingActionPanel(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   useEffect(() => {
     const handleCaptureResult = (event: Event) => {
@@ -484,33 +605,6 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                 <p className="status-message">{statusMessage}</p>
       </div>
 
-              <div className="panel-actions">
-      <button 
-                  type="button"
-                  className="primary-button"
-                  onClick={handleTranslateToMarkdown}
-                  disabled={!hasBothCaptures || isConverting || isResetting}
-      >
-                  {isConverting ? 'Converting…' : 'Translate to Markdown'}
-      </button>
-            <button 
-                  type="button"
-                  className="secondary-button"
-                  onClick={handleStartGrading}
-                  disabled={!hasMarkdown || isGrading || isConverting || isResetting}
-                >
-                  {isGrading ? 'Grading…' : 'Run Grading'}
-            </button>
-            <button 
-                  type="button"
-                  className="ghost-button ghost-button--danger"
-                  onClick={handleNextQuestion}
-                  disabled={isResetting}
-            >
-                  {isResetting ? 'Preparing…' : 'Next Question'}
-            </button>
-          </div>
-
               {gradingResult && (gradingResult.suggestedGrade || gradingResult.feedback) && (
                 <section className="grading-result">
                   <header className="grading-result__header">
@@ -528,6 +622,55 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
               </div>
             </div>
           )}
+      </div>
+
+      <div
+        ref={actionPanelRef}
+        className={`draggable-action-panel${isDraggingActionPanel ? ' dragging' : ''}`}
+        style={{ left: `${actionPanelPosition.x}px`, top: `${actionPanelPosition.y}px` }}
+      >
+        <div
+          className="draggable-action-panel__handle"
+          tabIndex={0}
+          aria-label="Move grading actions panel"
+          onPointerDown={handleActionPanelPointerDown}
+          onPointerMove={handleActionPanelPointerMove}
+          onPointerUp={endActionPanelDrag}
+          onPointerCancel={endActionPanelDrag}
+          onKeyDown={handleActionPanelKeyDown}
+        >
+          <span className="draggable-action-panel__grip" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+        <div className="draggable-action-panel__buttons">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleTranslateToMarkdown}
+            disabled={!hasBothCaptures || isConverting || isResetting}
+          >
+            {isConverting ? 'Converting…' : 'Translate to Markdown'}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={handleStartGrading}
+            disabled={!hasMarkdown || isGrading || isConverting || isResetting}
+          >
+            {isGrading ? 'Grading…' : 'Run Grading'}
+          </button>
+          <button
+            type="button"
+            className="ghost-button ghost-button--danger"
+            onClick={handleNextQuestion}
+            disabled={isResetting}
+          >
+            {isResetting ? 'Preparing…' : 'Next Question'}
+          </button>
+        </div>
       </div>
     </div>
   );

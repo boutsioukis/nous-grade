@@ -147,44 +147,6 @@ export class UnifiedLLMClient {
   }
 
   /**
-   * Generate a concise suggested grade message using GPT-4o mini
-   * Output is designed for quick copy/paste into student feedback
-   */
-  async generateSuggestedGrade(
-    gradingResult: Partial<GradingResult>,
-    studentText: string,
-    professorText: string
-  ): Promise<string> {
-    try {
-      console.log('📝 Starting GPT-4o mini suggested grade generation');
-
-      const prompt = this.buildSuggestedGradePrompt(gradingResult, studentText, professorText);
-
-      const response = await this.openai.chat.completions.create({
-        model: this.config.openai.model,
-        max_tokens: 1200,
-        temperature: 0.2,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      });
-
-      const suggestedGrade = response.choices[0]?.message?.content || '';
-
-      console.log('📝 GPT-4o mini suggested grade generation completed');
-      console.log(`📝 Suggested grade length: ${suggestedGrade.length}`);
-
-      return suggestedGrade.trim();
-    } catch (error) {
-      console.error('🔴 GPT-4o mini suggested grade generation failed:', error);
-      return gradingResult.feedback || 'Suggested grade unavailable.';
-    }
-  }
-
-  /**
    * Build OCR prompt optimized for mathematical content
    */
   private buildOCRPrompt(type: 'student_answer' | 'professor_answer'): string {
@@ -228,35 +190,6 @@ ${professorText}
 
 **STUDENT'S ANSWER**:
 ${studentText}`;
-  }
-
-  /**
-   * Build suggested grade prompt for GPT-4o mini
-   */
-  private buildSuggestedGradePrompt(
-    gradingResult: Partial<GradingResult>,
-    studentText: string,
-    professorText: string
-  ): string {
-    const rubricBreakdown = gradingResult.detailedAnalysis?.rubricBreakdown ?? [];
-
-    return `You are assisting a professor who has already reviewed the following grading analysis. Write a concise suggested grade message they can copy and paste into the student's feedback box.
-
-INPUT DATA (for your reference):
-- Score: ${gradingResult.score}/${gradingResult.maxScore}
-- Confidence: ${gradingResult.confidence ?? 'N/A'}
-- Rubric Breakdown: ${JSON.stringify(rubricBreakdown)}
-- Professor Model Answer: ${professorText}
-- Student Answer: ${studentText}
-
-REQUIREMENTS:
-1. Begin with a single line in the format: "Suggested grade: ${gradingResult.score}/${gradingResult.maxScore} – <very short summary>."
-2. Follow with short bullet points (one per rubric item) using the criterion names from the rubric breakdown. Format as "• Criterion (points/max): brief reason referencing the professor answer".
-3. Each reason must explicitly mention what the student did relative to the professor's answer (e.g., "matched the derivative steps shown by the professor", "omitted the justification for ...").
-4. Keep the entire message under 120 words and avoid markdown headers or numbered lists—only the opening sentence and bullet points.
-5. End with one short sentence encouraging the student on the next step (e.g., "Focus next on ...").
-
-The tone should be professional, supportive, and immediately usable without editing. Return plain text only.`;
   }
 
   /**

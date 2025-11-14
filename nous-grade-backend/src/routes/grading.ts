@@ -302,15 +302,6 @@ async function processGradingAsync(
       processingTime: gradingResult.processingTime
     });
 
-    // Step 2: Generate suggested grade message with Claude Sonnet 4
-    console.log(`📝 Generating suggested grade with Claude Sonnet 4`);
-    const suggestedGrade = await llmClient.generateSuggestedGrade(gradingResult, studentText, professorText);
-
-    console.log(`✅ Claude Sonnet 4 suggested grade completed`, {
-      originalFeedbackLength: gradingResult.feedback.length,
-      suggestedGradeLength: suggestedGrade.length
-    });
-
     // Create final grading result
     const finalGradingResult: GradingResult = {
       id: gradingId,
@@ -320,7 +311,7 @@ async function processGradingAsync(
       score: gradingResult.score,
       maxScore: gradingResult.maxScore,
       feedback: gradingResult.feedback,
-      suggestedGrade,
+      suggestedGrade: gradingResult.suggestedGrade,
       detailedAnalysis: gradingResult.detailedAnalysis,
       confidence: gradingResult.confidence,
       processingTime: gradingResult.processingTime,
@@ -357,16 +348,6 @@ async function processGradingAsync(
           processingSteps: [
             ...completedSteps,
             {
-              step: 'suggested_grade_generated',
-              status: 'completed',
-              startedAt: new Date(),
-              completedAt: new Date(),
-              metadata: {
-                model: 'claude-3-5-sonnet-20241022',
-                suggestedGradeLength: suggestedGrade.length
-              }
-            },
-            {
               step: 'grading_complete',
               status: 'completed',
               startedAt: new Date(),
@@ -374,7 +355,9 @@ async function processGradingAsync(
               metadata: {
                 gradingId,
                 finalScore: `${finalGradingResult.score}/${finalGradingResult.maxScore}`,
-                confidence: finalGradingResult.confidence
+                confidence: finalGradingResult.confidence,
+                model: finalGradingResult.model,
+                suggestedGradeLength: finalGradingResult.suggestedGrade?.length ?? 0
               }
             }
           ]
