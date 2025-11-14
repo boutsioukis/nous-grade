@@ -3,6 +3,7 @@
 
 import { OffscreenMessage, CropArea, MediaStreamConstraints } from '../types/capture';
 import { captureFrameFromStream, createSelectionOverlay } from '../utils/image-processing';
+import { screenSelector, SelectionArea } from '../components/ScreenSelector';
 
 console.log('Offscreen document loaded');
 
@@ -23,7 +24,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, sender, sendRes
     case 'PROCESS_MEDIA_STREAM':
       if (message.streamId && message.requestId) {
         console.log('🟠 Offscreen processing media stream:', message.streamId, 'for:', message.captureType);
-        handleStartCapture(message.streamId, message.requestId);
+        handleStartCapture(message.streamId, message.requestId, message.captureType);
       }
       break;
       
@@ -37,7 +38,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, sender, sendRes
 /**
  * Handles the screen capture process
  */
-async function handleStartCapture(streamId: string, requestId: string) {
+async function handleStartCapture(streamId: string, requestId: string, captureType: 'student' | 'professor' = 'student') {
   try {
     console.log(`Starting capture with streamId: ${streamId}`);
 
@@ -96,17 +97,27 @@ async function handleStartCapture(streamId: string, requestId: string) {
       }, 10000);
     });
 
-    // Add video to document
+    // Add video to document (hidden)
+    currentVideo.style.display = 'none';
     document.body.appendChild(currentVideo);
 
-    // Show selection overlay
-    console.log('Showing selection overlay');
-    const cropArea = await createSelectionOverlay(currentVideo);
-    console.log('Crop area selected:', cropArea);
+    // Show screen selector for region selection
+    console.log('🟠 Showing screen selector for region selection');
+    const imageData = await new Promise<string>((resolve, reject) => {
+      screenSelector.showSelector(currentVideo!, {
+        captureType: captureType,
+        onComplete: (selectionArea: SelectionArea, croppedImageData: string) => {
+          console.log('🟠 Screen selection completed:', selectionArea);
+          resolve(croppedImageData);
+        },
+        onCancel: () => {
+          console.log('🟠 Screen selection cancelled');
+          reject(new Error('Screen selection cancelled by user'));
+        }
+      });
+    });
 
-    // Capture the selected area
-    const imageData = await captureFrameFromStream(currentVideo, cropArea);
-    console.log('Image captured, data length:', imageData.length);
+    console.log('🟠 Region selection completed, data length:', imageData.length);
 
     // Clean up
     cleanup();

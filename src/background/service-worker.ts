@@ -39,19 +39,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   switch (message.type) {
     case 'START_CAPTURE':
-      // Instead of handling capture in service worker, delegate back to content script
-      // This is because Desktop Capture API in Manifest V3 has restrictions when called from service worker
-      console.log('🟢 Delegating capture back to content script for tab:', sender.tab?.id);
+      // Use the new direct tab capture flow
+      console.log('🟢 Starting direct tab capture for:', message.captureType);
       
       if (sender.tab?.id) {
-        chrome.tabs.sendMessage(sender.tab.id, {
-          type: 'HANDLE_DESKTOP_CAPTURE',
-          captureType: message.captureType
-        }).then(() => {
-          console.log('🟢 Desktop capture delegation sent to content script');
-        }).catch(error => {
-          console.error('🔴 Error delegating to content script:', error);
-        });
+        handleStartCapture(message.captureType, sender.tab.id);
+      } else {
+        console.error('🔴 No tab ID available for capture');
       }
       
       sendResponse({ success: true });
@@ -77,18 +71,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
-        case 'START_GRADING':
-          handleStartGrading(message.studentImageData, message.professorImageData);
+        case 'CONVERT_IMAGE_TO_MARKDOWN':
+          handleConvertToMarkdown(sender);
           sendResponse({ success: true });
           break;
 
-        case 'CONVERT_IMAGE_TO_MARKDOWN':
-          handleImageToMarkdown(message.imageData, message.type, sender);
+        case 'CONVERT_MULTIPLE_IMAGES_TO_MARKDOWN':
+          handleConvertMultipleImagesToMarkdown(message.studentImages, message.professorImages, sender);
           sendResponse({ success: true });
           break;
 
         case 'PROCESS_GRADING':
-          handleProcessGrading(message.studentMarkdown, message.professorMarkdown, sender);
+          handleProcessGrading(sender, message.studentMarkdown, message.professorMarkdown);
+          sendResponse({ success: true });
+          break;
+        case 'UPDATE_MARKDOWN':
+          handleUpdateMarkdown(message.captureType, message.markdown, sender);
           sendResponse({ success: true });
           break;
 
@@ -102,6 +100,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT':
+          handleCaptureCompleteFromContentScript(message.imageData, message.captureType, message.selectionArea, sender);
+          sendResponse({ success: true });
+          break;
+
+        case 'CAPTURE_CANCELLED':
+          handleCaptureCancelled(message.captureType, sender);
+          sendResponse({ success: true });
+          break;
+
         default:
           console.log('Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -112,105 +120,74 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle capture start requests
 async function handleStartCapture(captureType: 'student' | 'professor', tabId?: number) {
-  console.log(`🟢 Starting capture for ${captureType} on tab ${tabId}`);
+  console.log(`🟢 Starting direct tab capture for ${captureType} on tab ${tabId}`);
   
   try {
-    // Generate unique request ID
-    const requestId = `capture_${captureType}_${Date.now()}`;
-    
-    // Request desktop media access
-    console.log('Requesting desktop media access...');
-    
     // Ensure we have a valid tab ID
-    console.log('🟢 Tab ID received:', tabId);
     if (!tabId) {
-      throw new Error('No tab ID available for desktop capture');
+      throw new Error('No tab ID available for tab capture');
     }
     
-    const streamId = await new Promise<string>((resolve, reject) => {
-      console.log('🟢 Calling chrome.desktopCapture.chooseDesktopMedia...');
-      
-      // Call the API with proper error handling
-      const requestId = chrome.desktopCapture.chooseDesktopMedia(
-        ['screen', 'window', 'tab'],
-        (streamId) => {
-          console.log('🟢 Desktop capture callback called with streamId:', streamId);
-          console.log('🟢 chrome.runtime.lastError:', chrome.runtime.lastError);
-          
+    console.log('🟢 Capturing current tab directly...');
+    
+    // Capture the current tab directly using chrome.tabs.captureVisibleTab
+    const tabImageData = await new Promise<string>((resolve, reject) => {
+      chrome.tabs.captureVisibleTab(
+        { format: 'png', quality: 100 },
+        (dataUrl) => {
           if (chrome.runtime.lastError) {
-            console.error('Desktop capture error:', chrome.runtime.lastError);
-            reject(new Error(chrome.runtime.lastError.message || 'Desktop capture failed'));
+            console.error('Tab capture error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message || 'Tab capture failed'));
             return;
           }
           
-          if (streamId) {
-            console.log('Stream ID received successfully:', streamId);
-            resolve(streamId);
+          if (dataUrl) {
+            console.log('🟢 Tab captured successfully, data length:', dataUrl.length);
+            resolve(dataUrl);
           } else {
-            console.log('No stream ID received - user likely cancelled');
-            reject(new Error('User cancelled screen selection or no stream available'));
+            reject(new Error('No image data received from tab capture'));
           }
         }
       );
-      
-      console.log('🟢 Desktop capture request ID:', requestId);
-      
-      // Set a timeout to detect if the dialog never appears
-      setTimeout(() => {
-        console.log('🔴 Desktop capture timeout - dialog may not have appeared');
-        reject(new Error('Desktop capture dialog timeout - dialog may not have appeared'));
-      }, 30000); // 30 second timeout
     });
 
-    console.log(`Desktop media stream ID obtained: ${streamId}`);
-
-    // Create offscreen document if it doesn't exist
-    await ensureOffscreenDocument();
-
-    // Store the tab ID for this capture request
-    await chrome.storage.local.set({
-      [`request_${requestId}`]: {
-        tabId,
-        captureType,
-        timestamp: Date.now()
-      }
+    console.log('🟢 Sending tab image to content script for area selection...');
+    
+    // Send the tab image directly to content script for area selection
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'SHOW_SCREEN_SELECTOR',
+      screenImageData: tabImageData,
+      captureType: captureType
     });
 
-    // Send capture request to offscreen document
-    chrome.runtime.sendMessage({
-      type: 'START_CAPTURE',
-      streamId,
-      requestId
-    });
-
-    console.log(`Capture request sent to offscreen document for ${captureType}`);
+    if (response?.success) {
+      console.log(`🟢 Tab capture initiated successfully for ${captureType}`);
+    } else {
+      throw new Error('Content script failed to show area selector');
+    }
 
   } catch (error) {
-    console.error('Error starting capture:', error);
+    console.error(`🔴 Error starting capture for ${captureType}:`, error);
     
-    // Determine error type and provide appropriate message
-    let errorMessage = 'Unknown capture error';
-    if (error instanceof Error) {
-      if (error.message.includes('User cancelled')) {
-        errorMessage = 'Screen selection was cancelled. Please try again and select a screen to capture.';
-      } else if (error.message.includes('no stream available')) {
-        errorMessage = 'No screen available for capture. Please ensure you have screens to share.';
-      } else {
-        errorMessage = error.message;
-      }
+    // Update session with error
+    const session = sessionManager.getCurrentSession();
+    if (session) {
+      sessionManager.updateProcessingState({
+        status: 'error',
+        progress: 0,
+        message: `Capture failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
     }
     
-    // Send error back to content script
+    // Send error to content script
     if (tabId) {
-      try {
-        await chrome.tabs.sendMessage(tabId, {
-          type: 'CAPTURE_ERROR',
-          captureType,
-          error: errorMessage
-        });
-      } catch (messageError) {
-        console.log('Could not send error message to tab:', messageError);
-      }
+      chrome.tabs.sendMessage(tabId, {
+        type: 'CAPTURE_ERROR',
+        captureType: captureType,
+        error: error instanceof Error ? error.message : 'Unknown capture error'
+      }).catch(() => {
+        // Ignore if content script not available
+      });
     }
   }
 }
@@ -260,14 +237,7 @@ async function handleOffscreenCaptureComplete(requestId: string, imageData: stri
     const { tabId, captureType } = requestInfo;
     
     // Store the captured image data
-    await chrome.storage.local.set({
-      [`capture_${captureType}`]: {
-        imageData,
-        timestamp: Date.now(),
-        requestId
-      }
-    });
-    
+    await sessionManager.storeCapturedImage(captureType, imageData);
     console.log(`${captureType} capture data stored successfully`);
     
     // Send success message to the specific tab
@@ -341,15 +311,6 @@ async function handleCaptureCompleteFromPopup(imageData: string, captureType: 's
     // Store in session manager
     await sessionManager.storeCapturedImage(captureType, imageData);
 
-    // Also store in legacy format for backward compatibility
-    await chrome.storage.local.set({
-      [`capture_${captureType}`]: {
-        imageData,
-        timestamp: Date.now(),
-        source: 'popup'
-      }
-    });
-
     console.log(`🟢 ${captureType} capture data stored successfully`);
 
     // Find the active tab to send success message
@@ -370,20 +331,17 @@ async function handleCaptureCompleteFromPopup(imageData: string, captureType: 's
       }
     }
 
-    // Auto-convert to markdown if both images are captured
+    // Check if both images are captured and update UI state
     const session = sessionManager.getCurrentSession();
     if (session && session.studentImageData && session.professorImageData) {
-      console.log('🟢 Both images captured, starting auto-conversion');
+      console.log('🟢 Both images captured, ready for manual markdown conversion');
       
-      // Convert student answer
-      if (!session.studentMarkdown) {
-        handleImageToMarkdown(session.studentImageData, 'student', sender);
-      }
-      
-      // Convert professor answer
-      if (!session.professorMarkdown) {
-        handleImageToMarkdown(session.professorImageData, 'professor', sender);
-      }
+      // Update processing state to show both images are ready
+      sessionManager.updateProcessingState({
+        status: 'processing',
+        progress: 30,
+        message: 'Both images captured. Click "Translate to Markdown" to continue.'
+      });
     }
 
   } catch (error) {
@@ -442,35 +400,180 @@ async function handleProcessStream(streamId: string, captureType: 'student' | 'p
 }
 
 // Handle grading start requests
-function handleStartGrading(studentImageData: string, professorImageData: string) {
-  console.log('Starting grading process...');
-  console.log(`Student image data length: ${studentImageData.length}`);
-  console.log(`Professor image data length: ${professorImageData.length}`);
+// Handle convert to markdown button click
+async function handleConvertToMarkdown(sender: chrome.runtime.MessageSender) {
+  console.log('🟢 Starting manual markdown conversion for both images');
   
-  // For now, we'll simulate the grading process
-  // In Phase 4, this will integrate with the backend API
-  
-  setTimeout(() => {
-    const mockResult = {
-      gradedAnswer: 'Mock graded answer with points allocated',
-      points: 8,
-      maxPoints: 10,
-      reasoning: 'Student demonstrated good understanding of the concept but missed some key details.',
-      feedback: 'Good work! Consider reviewing the specific requirements mentioned in the question.'
-    };
-    
-    console.log('Mock grading completed:', mockResult);
-    
-    // Send result back to content script
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: 'GRADING_COMPLETE',
-          result: mockResult
-        });
-      }
+  try {
+    await sessionManager.ensureActiveSession();
+    const session = sessionManager.getCurrentSession();
+    if (!session?.studentImageData || !session?.professorImageData) {
+      throw new Error('Both images must be captured before conversion');
+    }
+
+    // Convert both images sequentially to avoid race conditions
+    await handleImageToMarkdown(session.studentImageData, 'student', sender);
+    await handleImageToMarkdown(session.professorImageData, 'professor', sender);
+
+    // Update final state
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: 'Both answers converted. Review and edit if needed.'
     });
-  }, 2000);
+
+    // Notify UI that markdown conversion is complete
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_ALL_COMPLETE',
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+    }
+
+  } catch (error) {
+    console.error('🔴 Manual markdown conversion failed:', error);
+    sessionManager.updateProcessingState({
+      status: 'error',
+      progress: 0,
+      message: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+// Handle multiple images to markdown conversion
+async function handleConvertMultipleImagesToMarkdown(
+  studentImages: Array<{id: string, imageData: string, timestamp: number}>, 
+  professorImages: Array<{id: string, imageData: string, timestamp: number}>, 
+  sender: chrome.runtime.MessageSender
+) {
+  console.log('🟢 Starting multiple images markdown conversion');
+  console.log(`🟢 Student images: ${studentImages.length}, Professor images: ${professorImages.length}`);
+  
+  try {
+    await sessionManager.ensureActiveSession();
+
+    // Convert all student images and combine results
+    let combinedStudentMarkdown = '';
+    for (let i = 0; i < studentImages.length; i++) {
+      const image = studentImages[i];
+      console.log(`🟢 Converting student image ${i + 1}/${studentImages.length}`);
+      
+      sessionManager.updateProcessingState({
+        status: 'converting-student',
+        progress: 20 + (i / studentImages.length) * 20,
+        message: `Converting student image ${i + 1} of ${studentImages.length}...`
+      });
+
+      const request = {
+        imageData: image.imageData,
+        type: 'student' as const
+      };
+
+      const result = await backendAPI.convertImageToMarkdown(request);
+      
+      if (result.success) {
+        const cleaned = result.markdown?.trim() ?? '';
+        if (cleaned) {
+          combinedStudentMarkdown = combinedStudentMarkdown
+            ? `${combinedStudentMarkdown}\n\n${cleaned}`
+            : cleaned;
+        }
+      } else {
+        throw new Error(`Failed to convert student image ${i + 1}: ${result.error}`);
+      }
+    }
+
+    // Convert all professor images and combine results
+    let combinedProfessorMarkdown = '';
+    for (let i = 0; i < professorImages.length; i++) {
+      const image = professorImages[i];
+      console.log(`🟢 Converting professor image ${i + 1}/${professorImages.length}`);
+      
+      sessionManager.updateProcessingState({
+        status: 'converting-professor',
+        progress: 40 + (i / professorImages.length) * 20,
+        message: `Converting professor image ${i + 1} of ${professorImages.length}...`
+      });
+
+      const request = {
+        imageData: image.imageData,
+        type: 'professor' as const
+      };
+
+      const result = await backendAPI.convertImageToMarkdown(request);
+      
+      if (result.success) {
+        const cleaned = result.markdown?.trim() ?? '';
+        if (cleaned) {
+          combinedProfessorMarkdown = combinedProfessorMarkdown
+            ? `${combinedProfessorMarkdown}\n\n${cleaned}`
+            : cleaned;
+        }
+      } else {
+        throw new Error(`Failed to convert professor image ${i + 1}: ${result.error}`);
+      }
+    }
+
+    // Store combined markdown in session
+    await sessionManager.storeMarkdown('student', combinedStudentMarkdown);
+    await sessionManager.storeMarkdown('professor', combinedProfessorMarkdown);
+
+    // Update final state
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: 'All images converted. Review and edit if needed.'
+    });
+
+    // Send success messages to UI for both types
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      // Send student markdown completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_COMPLETE',
+        captureType: 'student',
+        markdown: combinedStudentMarkdown,
+        confidence: 0.95, // Average confidence
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+
+      // Send professor markdown completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_COMPLETE',
+        captureType: 'professor',
+        markdown: combinedProfessorMarkdown,
+        confidence: 0.95, // Average confidence
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+
+      // Send overall completion
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'MARKDOWN_CONVERSION_ALL_COMPLETE',
+        success: true
+      }).catch(() => {
+        // Ignore if content script not available
+      });
+    }
+
+    console.log('🟢 Multiple images markdown conversion completed successfully');
+
+  } catch (error) {
+    console.error('🔴 Multiple images markdown conversion failed:', error);
+    sessionManager.updateProcessingState({
+      status: 'error',
+      progress: 0,
+      message: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 }
 
 // Handle image to markdown conversion
@@ -527,10 +630,34 @@ async function handleImageToMarkdown(imageData: string, type: 'student' | 'profe
 }
 
 // Handle grading process
-async function handleProcessGrading(studentMarkdown: string, professorMarkdown: string, sender: chrome.runtime.MessageSender) {
+async function handleProcessGrading(
+  sender: chrome.runtime.MessageSender,
+  studentMarkdown?: string,
+  professorMarkdown?: string
+) {
   console.log('🟢 Starting AI grading process');
   
   try {
+    await sessionManager.ensureActiveSession();
+    if (typeof studentMarkdown === 'string') {
+      await sessionManager.updateSession({ studentMarkdown });
+    }
+
+    if (typeof professorMarkdown === 'string') {
+      await sessionManager.updateSession({ professorMarkdown });
+    }
+
+    // Get current session data
+    const session = sessionManager.getCurrentSession();
+    
+    if (!session) {
+      throw new Error('No active session found. Please capture screenshots first.');
+    }
+    
+    if (!session.studentMarkdown || !session.professorMarkdown) {
+      throw new Error('Missing markdown data. Please convert images to markdown first.');
+    }
+
     sessionManager.updateProcessingState({
       status: 'grading',
       progress: 80,
@@ -538,9 +665,8 @@ async function handleProcessGrading(studentMarkdown: string, professorMarkdown: 
     });
 
     const request: GradeAnswerRequest = {
-      studentAnswer: studentMarkdown,
-      modelAnswer: professorMarkdown,
-      maxPoints: 10
+      studentAnswer: session.studentMarkdown,
+      modelAnswer: session.professorMarkdown
     };
 
     const result = await backendAPI.gradeAnswer(request);
@@ -578,6 +704,45 @@ async function handleProcessGrading(studentMarkdown: string, professorMarkdown: 
   }
 }
 
+async function handleUpdateMarkdown(
+  captureType: 'student' | 'professor',
+  markdown: string,
+  sender: chrome.runtime.MessageSender
+) {
+  try {
+    await sessionManager.ensureActiveSession();
+
+    if (captureType === 'student') {
+      await sessionManager.updateSession({ studentMarkdown: markdown });
+    } else {
+      await sessionManager.updateSession({ professorMarkdown: markdown });
+    }
+
+    sessionManager.updateProcessingState({
+      status: 'editing',
+      progress: 70,
+      message: `${captureType === 'student' ? 'Student' : 'Professor'} markdown edited.`
+    });
+  } catch (error) {
+    console.error('🔴 Failed to persist markdown update:', error);
+
+    const targetTabId = sender.tab?.id;
+    if (targetTabId) {
+      await chrome.tabs
+        .sendMessage(targetTabId, {
+          type: 'PROCESSING_STATE_UPDATE',
+          state: {
+            status: 'error',
+            progress: 0,
+            message: error instanceof Error ? error.message : 'Failed to save markdown changes.',
+            error: error instanceof Error ? error.message : 'Failed to save markdown changes.',
+          },
+        })
+        .catch(() => undefined);
+    }
+  }
+}
+
 // Handle session state requests
 async function handleGetSessionState(sender: chrome.runtime.MessageSender) {
   const session = sessionManager.getCurrentSession();
@@ -598,15 +763,125 @@ async function handleGetSessionState(sender: chrome.runtime.MessageSender) {
 
 // Handle session clearing
 async function handleClearSession(sender: chrome.runtime.MessageSender) {
-  await sessionManager.clearSession();
-  
+  let payload: { type: string; success: boolean; sessionId?: string; error?: string };
+
+  try {
+    await sessionManager.clearSession();
+    const newSessionId = await sessionManager.createSession();
+    sessionManager.updateProcessingState({
+      status: 'idle',
+      progress: 0,
+      message: 'Capture both answers to get started.'
+    });
+
+    payload = {
+      type: 'SESSION_CLEARED',
+      success: true,
+      sessionId: newSessionId
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to reset session. Please try again.';
+    payload = {
+      type: 'SESSION_CLEARED',
+      success: false,
+      error: errorMessage
+    };
+  }
+
+  const targetTabId = sender.tab?.id;
+
+  if (targetTabId) {
+    await chrome.tabs.sendMessage(targetTabId, payload).catch(() => undefined);
+    return;
+  }
+
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tabs[0]?.id) {
-    chrome.tabs.sendMessage(tabs[0].id, {
-      type: 'SESSION_CLEARED',
-      success: true
-    }).catch(() => {
-      // Ignore if content script not available
+    await chrome.tabs.sendMessage(tabs[0].id, payload).catch(() => undefined);
+  }
+}
+
+/**
+ * Handle capture completion from content script (after region selection)
+ */
+async function handleCaptureCompleteFromContentScript(
+  imageData: string, 
+  captureType: 'student' | 'professor', 
+  selectionArea: any,
+  sender: chrome.runtime.MessageSender
+) {
+  console.log('🟢 Handling capture completion from content script for:', captureType);
+  console.log('🟢 Image data length:', imageData.length);
+  console.log('🟢 Selection area:', selectionArea);
+  
+  try {
+    // Store the captured image data
+    await sessionManager.storeCapturedImage(captureType, imageData);
+    
+    // Send capture complete message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_COMPLETE',
+        captureType: captureType,
+        imageData: imageData,
+        success: true
+      });
+    }
+    
+    console.log('🟢', captureType, 'capture data stored successfully');
+    
+    // Check if we have both images and update UI state
+    const session = sessionManager.getCurrentSession();
+    if (session?.studentImageData && session?.professorImageData) {
+      console.log('🟢 Both images captured, ready for manual markdown conversion');
+      
+      // Update processing state to show both images are ready
+      sessionManager.updateProcessingState({
+        status: 'processing',
+        progress: 30,
+        message: 'Both images captured. Click "Translate to Markdown" to continue.'
+      });
+    }
+    
+  } catch (error) {
+    console.error('🔴 Error handling capture completion from content script:', error);
+    
+    // Send error message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_ERROR',
+        captureType: captureType,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+}
+
+/**
+ * Handle capture cancellation from content script
+ */
+async function handleCaptureCancelled(captureType: 'student' | 'professor', sender: chrome.runtime.MessageSender) {
+  console.log('🟢 Capture cancelled by user for:', captureType);
+  
+  try {
+    // Update processing state
+    sessionManager.updateProcessingState({
+      status: 'idle',
+      progress: 0,
+      message: `${captureType} capture cancelled by user`
     });
+    
+    // Send cancellation message to content script
+    if (sender.tab?.id) {
+      await chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'CAPTURE_CANCELLED',
+        captureType: captureType
+      });
+    }
+    
+    console.log('🟢 Capture cancellation handled successfully');
+  } catch (error) {
+    console.error('🔴 Error handling capture cancellation:', error);
   }
 }

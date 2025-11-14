@@ -4,157 +4,215 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import GradingOverlay from '../components/GradingOverlay';
+import { contentScriptScreenSelector } from '../components/ContentScriptScreenSelector';
 
-console.log('Nous-Grade Content Script loaded on:', window.location.href);
+console.log('Nous Grade content script ready');
 
 let gradingUI: HTMLElement | null = null;
 let reactRoot: any = null;
 
 // Listen for custom events from injected UI
 document.addEventListener('nous-grade-capture-request', (event: Event) => {
-  const customEvent = event as CustomEvent;
-  console.log('🔵 Content script received capture request:', customEvent.detail);
+  const { captureType } = (event as CustomEvent<{ captureType: 'student' | 'professor' }>).detail;
   
-  // Check if extension context is still valid
   if (!chrome.runtime?.id) {
-    console.error('Extension context invalidated - extension may have been reloaded');
-    
-    // Send error back to the page
     const errorEvent = new CustomEvent('nous-grade-capture-error', {
       detail: {
-        captureType: customEvent.detail.captureType,
-        error: 'Extension context invalidated. Please reload the page and try again.'
-      }
+        captureType,
+        error: 'Extension context invalidated. Please reload the page and try again.',
+      },
     });
     document.dispatchEvent(errorEvent);
     return;
   }
   
-  // Forward the request to the service worker
-  console.log('🔵 Forwarding to service worker:', customEvent.detail);
-  chrome.runtime.sendMessage({
-    type: customEvent.detail.type,
-    captureType: customEvent.detail.captureType
-  }).then(response => {
-    console.log('🔵 Service worker response:', response);
-  }).catch(error => {
-    console.error('🔴 Error forwarding capture request:', error);
+  hideGradingUI();
+  
+  chrome.runtime
+    .sendMessage({
+    type: 'START_CAPTURE',
+      captureType,
+    })
+    .catch((error: unknown) => {
+      const rawMessage =
+        error instanceof Error ? error.message : 'Capture request failed. Please try again.';
+
+    showGradingUI();
     
-    let errorMessage = error.message;
-    if (error.message.includes('Extension context invalidated')) {
-      errorMessage = 'Extension was reloaded. Please refresh the page and try again.';
-    }
-    
-    // Send error back to the page
+      const friendly =
+        rawMessage.includes('Extension context invalidated')
+          ? 'Extension was reloaded. Please refresh the page and try again.'
+          : rawMessage;
+
     const errorEvent = new CustomEvent('nous-grade-capture-error', {
       detail: {
-        captureType: customEvent.detail.captureType,
-        error: errorMessage
-      }
+          captureType,
+          error: friendly,
+        },
     });
     document.dispatchEvent(errorEvent);
+  });
+});
+
+// Listen for markdown conversion requests from injected UI
+document.addEventListener('nous-grade-convert-to-markdown', (event: Event) => {
+  const { studentImages, professorImages } = (event as CustomEvent<{
+    studentImages: Array<unknown>;
+    professorImages: Array<unknown>;
+  }>).detail;
+
+  if (!chrome.runtime?.id) {
+    return;
+  }
+  
+  chrome.runtime.sendMessage({
+    type: 'CONVERT_MULTIPLE_IMAGES_TO_MARKDOWN',
+    studentImages,
+    professorImages,
   });
 });
 
 // Listen for grading requests from injected UI
 document.addEventListener('nous-grade-grading-request', (event: Event) => {
-  const customEvent = event as CustomEvent;
-  console.log('🔵 Content script received grading request:', customEvent.detail);
-  
-  // Check if extension context is still valid
+  const { studentMarkdown, professorMarkdown } = (event as CustomEvent<{
+    studentMarkdown: string;
+    professorMarkdown: string;
+  }>).detail ?? { studentMarkdown: '', professorMarkdown: '' };
+
   if (!chrome.runtime?.id) {
-    console.error('Extension context invalidated - extension may have been reloaded');
     return;
   }
   
-  // Forward the grading request to the service worker
-  console.log('🔵 Forwarding grading request to service worker:', customEvent.detail);
   chrome.runtime.sendMessage({
-    type: customEvent.detail.type,
-    studentMarkdown: customEvent.detail.studentMarkdown,
-    professorMarkdown: customEvent.detail.professorMarkdown
-  }).then(response => {
-    console.log('🔵 Grading request service worker response:', response);
-  }).catch(error => {
-    console.error('🔴 Error forwarding grading request:', error);
+    type: 'PROCESS_GRADING',
+    studentMarkdown,
+    professorMarkdown,
+  });
+});
+  
+// Listen for next-question requests from injected UI
+document.addEventListener('nous-grade-next-question', () => {
+  if (!chrome.runtime?.id) {
+    document.dispatchEvent(
+      new CustomEvent('nous-grade-session-cleared', {
+        detail: {
+          success: false,
+          error: 'Extension context invalidated. Please refresh the page and try again.',
+        },
+      })
+    );
+    return;
+  }
+
+  chrome.runtime
+    .sendMessage({ type: 'CLEAR_SESSION' })
+    .catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to reset session. Please try again.';
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-session-cleared', {
+          detail: {
+            success: false,
+            error: message,
+          },
+        })
+      );
+    });
+});
+
+// Listen for manual markdown edits from UI
+document.addEventListener('nous-grade-markdown-update', (event: Event) => {
+  const { captureType, markdown } = (event as CustomEvent<{
+    captureType: 'student' | 'professor';
+    markdown: string;
+  }>).detail ?? {};
+
+  if (!chrome.runtime?.id || !captureType) {
+    return;
+  }
+  
+  chrome.runtime.sendMessage({
+    type: 'UPDATE_MARKDOWN',
+    captureType,
+    markdown,
   });
 });
 
 // Listen for messages from the service worker
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Content script received message:', message);
-  
-  // Check if extension context is still valid
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!chrome.runtime?.id) {
-    console.error('Extension context invalidated in message listener');
     sendResponse({ success: false, error: 'Extension context invalidated' });
     return false;
   }
   
-  if (message.type === 'INJECT_GRADING_UI') {
+  switch (message.type) {
+    case 'INJECT_GRADING_UI':
     injectGradingUI();
     sendResponse({ success: true });
-  } else if (message.type === 'REMOVE_GRADING_UI') {
+      break;
+    case 'REMOVE_GRADING_UI':
     removeGradingUI();
     sendResponse({ success: true });
-  } else if (message.type === 'START_CAPTURE') {
-    handleStartCapture(message.captureType);
+      break;
+    case 'CAPTURE_COMPLETE':
+    case 'CAPTURE_ERROR':
+    showGradingUI();
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-capture-result', {
+          detail: message,
+        })
+      );
     sendResponse({ success: true });
-  } else if (message.type === 'HANDLE_DESKTOP_CAPTURE') {
-    // Handle desktop capture directly in content script
-    console.log('🔵 Content script handling desktop capture for:', message.captureType);
-    handleDesktopCapture(message.captureType);
+      break;
+    case 'PROCESSING_STATE_UPDATE':
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-processing-update', {
+          detail: message.state,
+        })
+      );
     sendResponse({ success: true });
-  } else if (message.type === 'CAPTURE_COMPLETE' || message.type === 'CAPTURE_ERROR') {
-    // Forward capture results to the injected UI
-    console.log('Forwarding capture result to injected UI:', message);
-
-    const resultEvent = new CustomEvent('nous-grade-capture-result', {
-      detail: message
-    });
-    document.dispatchEvent(resultEvent);
-
+      break;
+    case 'MARKDOWN_CONVERSION_COMPLETE':
+    case 'MARKDOWN_CONVERSION_ALL_COMPLETE':
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-markdown-complete', {
+          detail: message,
+        })
+      );
     sendResponse({ success: true });
-  } else if (message.type === 'PROCESSING_STATE_UPDATE') {
-    // Forward processing state updates to the injected UI
-    console.log('🔵 Forwarding processing state update to injected UI:', message);
-
-    const stateEvent = new CustomEvent('nous-grade-processing-update', {
-      detail: message.state
-    });
-    document.dispatchEvent(stateEvent);
-
+      break;
+    case 'GRADING_COMPLETE':
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-grading-complete', {
+          detail: message,
+        })
+      );
     sendResponse({ success: true });
-  } else if (message.type === 'MARKDOWN_CONVERSION_COMPLETE') {
-    // Forward markdown conversion results to the injected UI
-    console.log('🔵 Forwarding markdown conversion to injected UI:', message);
-
-    const markdownEvent = new CustomEvent('nous-grade-markdown-complete', {
-      detail: message
-    });
-    document.dispatchEvent(markdownEvent);
-
+      break;
+    case 'SHOW_SCREEN_SELECTOR':
+    showFullBrowserScreenSelector(message.screenImageData, message.captureType);
     sendResponse({ success: true });
-  } else if (message.type === 'GRADING_COMPLETE') {
-    // Forward grading results to the injected UI
-    console.log('🔵 Forwarding grading results to injected UI:', message);
-
-    const gradingEvent = new CustomEvent('nous-grade-grading-complete', {
-      detail: message
-    });
-    document.dispatchEvent(gradingEvent);
-
-    sendResponse({ success: true });
+      break;
+    case 'SESSION_CLEARED':
+      document.dispatchEvent(
+        new CustomEvent('nous-grade-session-cleared', {
+          detail: message,
+        })
+      );
+      sendResponse({ success: true });
+      break;
+    default:
+      sendResponse({ success: false, error: 'Unknown message type' });
+      break;
   }
   
-  return true; // Keep the message channel open for async responses
+  return true;
 });
 
 // Function to inject the React grading UI
 function injectGradingUI() {
   // Check if grading UI already exists
   if (gradingUI) {
-    console.log('Grading UI already exists, removing first');
     removeGradingUI();
   }
   
@@ -171,8 +229,20 @@ function injectGradingUI() {
   reactRoot.render(React.createElement(GradingOverlay, {
     onClose: removeGradingUI
   }));
-  
-  console.log('Grading UI injected successfully');
+}
+
+// Function to temporarily hide the grading UI during capture
+function hideGradingUI() {
+  if (gradingUI) {
+    gradingUI.style.display = 'none';
+  }
+}
+
+// Function to show the grading UI after capture
+function showGradingUI() {
+  if (gradingUI) {
+    gradingUI.style.display = 'block';
+  }
 }
 
 // Function to remove the grading UI
@@ -182,62 +252,52 @@ function removeGradingUI() {
     gradingUI.remove();
     gradingUI = null;
     reactRoot = null;
-    console.log('Grading UI removed successfully');
   }
 }
 
 // Function to handle capture requests
-function handleStartCapture(captureType: 'student' | 'professor') {
-  console.log(`Starting capture for ${captureType}`);
-  
-  // For now, we'll simulate the capture process
-  // In Phase 3, this will integrate with the actual screen capture API
-  
-  // Simulate successful capture after a short delay
-  setTimeout(() => {
-    const mockImageData = `data:image/png;base64,mock-${captureType}-image-data-${Date.now()}`;
-    
-    // Send capture complete message back to service worker
-    chrome.runtime.sendMessage({
-      type: 'CAPTURE_COMPLETE',
-      captureType,
-      imageData: mockImageData
-    });
-    
-    console.log(`Mock capture completed for ${captureType}`);
-  }, 1000);
-}
+// DEPRECATED: Old mock capture function - no longer used
+// Direct tab capture is now handled in the service worker
 
-// Function to handle desktop capture requests from service worker
-async function handleDesktopCapture(captureType: 'student' | 'professor') {
-  console.log('🔵 Content script attempting desktop capture for:', captureType);
-  
+// Function to show full-browser screen selector
+async function showFullBrowserScreenSelector(screenImageData: string, captureType: 'student' | 'professor') {
   try {
-    // Content scripts can't directly use chrome.desktopCapture API
-    // We need to send a message to trigger popup-based capture
-    
-    // Send a message to the injected UI to show a notification
-    const notificationEvent = new CustomEvent('nous-grade-capture-notification', {
-      detail: {
-        type: 'CAPTURE_INSTRUCTION',
-        captureType: captureType,
-        message: `Please use the extension popup to capture ${captureType} answer. Click the extension icon and use the "Capture ${captureType} Answer" button.`
+    await contentScriptScreenSelector.showSelector({
+      screenImageData,
+      captureType,
+      onComplete: (selectionArea, croppedImageData) => {
+        if (!chrome.runtime?.id) {
+          return;
+        }
+        
+        chrome.runtime
+          .sendMessage({
+          type: 'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT',
+          imageData: croppedImageData,
+            captureType,
+            selectionArea,
+          })
+          .catch((error: unknown) => {
+            console.error('Failed to send cropped image to service worker:', error);
+        });
+      },
+      onCancel: () => {
+        showGradingUI();
+        chrome.runtime
+          .sendMessage({
+          type: 'CAPTURE_CANCELLED',
+            captureType,
+          })
+          .catch((error: unknown) => {
+            console.error('Failed to notify service worker about cancellation:', error);
+        });
       }
     });
-    document.dispatchEvent(notificationEvent);
-    
-    console.log('🔵 Desktop capture instruction sent to injected UI');
-    
   } catch (error) {
-    console.error('🔴 Error in handleDesktopCapture:', error);
-    
-    // Send error event to injected UI
-    const errorEvent = new CustomEvent('nous-grade-capture-error', {
-      detail: {
-        captureType: captureType,
-        error: 'Desktop capture must be initiated from extension popup'
-      }
-    });
-    document.dispatchEvent(errorEvent);
+    console.error('Failed to show screen selector:', error);
+    showGradingUI();
   }
 }
+
+// DEPRECATED: Old desktop capture function - no longer used
+// Direct tab capture is now handled in the service worker

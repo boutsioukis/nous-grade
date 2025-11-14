@@ -8,22 +8,35 @@ export interface MessageTypes {
     type: 'student' | 'professor';
     imageData: string;
   };
-  'START_GRADING': { 
-    studentImageData: string;
-    professorImageData: string;
-  };
   'GRADING_COMPLETE': { 
     result: GradingResult;
   };
   'INJECT_GRADING_UI': {};
   'REMOVE_GRADING_UI': {};
+  'SHOW_SCREEN_SELECTOR': {
+    screenImageData: string;
+    captureType: 'student' | 'professor';
+  };
+  'CAPTURE_COMPLETE_FROM_CONTENT_SCRIPT': {
+    imageData: string;
+    captureType: 'student' | 'professor';
+    selectionArea: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+  };
+  'CAPTURE_CANCELLED': {
+    captureType: 'student' | 'professor';
+  };
 }
 
 export interface GradingResult {
   gradedAnswer: string;
   points: number;
   maxPoints: number;
-  reasoning: string;
+  suggestedGrade: string;
   feedback: string;
 }
 

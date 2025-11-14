@@ -1,5 +1,3 @@
-// Backend API types and interfaces for Phase 4
-
 export interface ImageToMarkdownRequest {
   imageData: string; // Base64 encoded image
   type: 'student' | 'professor';
@@ -16,15 +14,13 @@ export interface ImageToMarkdownResponse {
 export interface GradeAnswerRequest {
   studentAnswer: string;
   modelAnswer: string;
-  gradingScheme?: string;
-  maxPoints?: number;
 }
 
 export interface GradeAnswerResponse {
   gradedAnswer: string;
   points: number;
-  maxPoints: number;
-  reasoning: string;
+  maxPoints?: number;
+  suggestedGrade: string;
   feedback: string;
   confidence: number;
   processingTime: number;
@@ -35,6 +31,8 @@ export interface GradeAnswerResponse {
 export interface SessionData {
   sessionId: string;
   timestamp: number;
+  backendSessionId?: string;
+  backendSessionExpiresAt?: number;
   studentImageData?: string;
   professorImageData?: string;
   studentMarkdown?: string;
@@ -52,14 +50,17 @@ export interface BackendConfig {
 
 // API endpoint definitions
 export const API_ENDPOINTS = {
-  IMAGE_TO_MARKDOWN: '/api/image-to-markdown',
-  GRADE_ANSWER: '/api/grade-answer',
-  HEALTH_CHECK: '/api/health'
+  IMAGE_TO_MARKDOWN: '/api/grading/screenshots',
+  GRADE_ANSWER: '/api/grading/grade',
+  HEALTH_CHECK: '/health',
+  CREATE_SESSION: '/api/grading/sessions',
+  GET_RESULTS: '/api/grading/sessions/results'
 } as const;
 
 // Default backend configuration
 export const DEFAULT_BACKEND_CONFIG: BackendConfig = {
-  baseUrl: 'https://api.nous-grade.com', // This will be configurable
+  baseUrl: 'http://localhost:3001', // Local development server
+  apiKey: 'nous-grade-api-key-2024', // API key for authentication
   timeout: 30000, // 30 seconds
   retryAttempts: 3
 };

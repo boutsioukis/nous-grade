@@ -7,7 +7,7 @@ AI-powered grading assistant for university professors with real-time screen cap
 - **Professional Grading Interface** - Clean, modern UI designed for university professors
 - **Real Screen Capture** - Capture student and professor answers from any website
 - **Interactive Selection** - Drag-to-select interface for precise area capture
-- **AI Integration Ready** - Built for Phase 4 backend integration
+- **AI-Powered Grading** - Sends captured answers to the Nous-Grade backend for end-to-end evaluation
 - **Chrome Extension** - Works on any website (except Chrome internal pages)
 
 ## 🚀 Quick Start
@@ -46,17 +46,10 @@ npm run build
    - Click **"+ Capture Student Answer"** → Select screen/window → Draw selection box
    - Click **"+ Capture Professor Answer"** → Select screen/window → Draw selection box
 
-5. **Start Grading** (currently simulated, ready for Phase 4 backend)
-
-## 🔧 Current Status: Phase 3 Complete
-
-### ✅ Completed Features
-- **Phase 1**: Basic extension scaffolding and content injection
-- **Phase 2**: React UI integration and message passing
-- **Phase 3**: Real screen capture with Desktop Capture API
-
-### 🚧 Next Phase
-- **Phase 4**: Backend integration for AI-powered grading
+5. **Run Grading**
+   - Translate each answer to markdown
+   - Optionally review or edit the extracted markdown
+   - Click **"Run Grading"** to submit both answers to the backend and receive AI feedback
 
 ## 📁 Project Structure
 
@@ -85,6 +78,15 @@ nous-grade-extension/
 │   └── types/
 │       ├── messages.ts             # Message passing types
 │       └── capture.ts              # Screen capture types
+├── nous-grade-backend/             # Express + TypeScript backend service
+│   ├── src/
+│   │   ├── app.ts                  # Express application setup
+│   │   ├── server.ts               # Startup script
+│   │   ├── routes/                 # Session, screenshot, grading routes
+│   │   ├── services/               # LLM orchestration and persistence
+│   │   └── middleware/             # Auth, logging, error handling
+│   ├── tsconfig.json               # Backend TypeScript config
+│   └── package.json                # Backend dependencies and scripts
 └── dist/                           # Built extension files
 ```
 
@@ -138,17 +140,6 @@ npm run clean      # Clean dist folder
 - **Verify**: User granted screen sharing permission
 - **Debug**: Check Service Worker console for error messages
 
-## 📋 Phase Development Plan
-
-- ✅ **Phase 1**: Foundation & "Hello World" Injection
-- ✅ **Phase 2**: UI Integration & Communication  
-- ✅ **Phase 3**: Core Feature - Screen Capture Implementation
-- 🚧 **Phase 4**: Full Loop Backend Integration (Next)
-
 ## 🤝 Contributing
 
 This extension is built following Chrome Extension Manifest V3 best practices with TypeScript and React for maintainable, scalable code.
-
-## 📄 License
-
-MIT License - See LICENSE file for details

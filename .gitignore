@@ -14,6 +14,8 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+environment.env
+*.env
 
 # IDE files
 .vscode/
@@ -69,3 +71,4 @@ jspm_packages/
 # Temporary files
 *.tmp
 *.temp
+nous-grade-backend/data/sessions.json

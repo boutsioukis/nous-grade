@@ -1,27 +1,4 @@
-/* Content Script Styles for Nous-Grade Extension */
-
-#nous-grade-hello-world {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: #4CAF50;
-  color: white;
-  padding: 10px 15px;
-  border-radius: 5px;
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  z-index: 10000;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-#nous-grade-hello-world:hover {
-  background: #45a049;
-  transform: scale(1.05);
-}
-
-/* Ensure our elements are above other content */
 .nous-grade-overlay {
-  z-index: 10000 !important;
+  position: relative;
+  z-index: 2147483647 !important;
 }
