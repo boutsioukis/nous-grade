@@ -59,28 +59,6 @@ export interface OCRResult {
   processingTime: number;
   model: string; // 'gpt-4o-mini'
   processedAt: Date;
-  metadata: OCRMetadata;
-}
-
-export interface OCRMetadata {
-  textBlocks: TextBlock[];
-  detectedLanguage: string;
-  mathContent: boolean;
-  handwritingDetected: boolean;
-}
-
-export interface TextBlock {
-  text: string;
-  confidence: number;
-  boundingBox: BoundingBox;
-  type: 'text' | 'math' | 'diagram';
-}
-
-export interface BoundingBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 export interface GradingResult {

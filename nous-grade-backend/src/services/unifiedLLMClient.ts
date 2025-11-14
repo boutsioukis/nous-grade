@@ -62,27 +62,22 @@ export class UnifiedLLMClient {
       const processingTime = Date.now() - startTime;
 
       // Parse the structured response
-      const parsedResult = this.parseOCRResponse(extractedText);
+      const parsedText = this.parseOCRResponse(extractedText);
+      const confidenceScore = 0.92;
 
       console.log(`🔍 GPT-4o mini OCR completed in ${processingTime}ms`);
-      console.log(`🔍 Extracted text length: ${parsedResult.text.length}`);
-      console.log(`🔍 Confidence: ${parsedResult.confidence}`);
+      console.log(`🔍 Extracted text length: ${parsedText.length}`);
+      console.log(`🔍 Confidence (default): ${confidenceScore}`);
 
       return {
         id: '', // Will be set by the database
         screenshotId: '', // Will be set by the caller
         sessionId: '', // Will be set by the caller
-        extractedText: parsedResult.text,
-        confidence: parsedResult.confidence,
+        extractedText: parsedText,
+        confidence: confidenceScore,
         processingTime,
         model: this.config.openai.model,
         processedAt: new Date(),
-        metadata: {
-          textBlocks: parsedResult.textBlocks,
-          detectedLanguage: parsedResult.language,
-          mathContent: parsedResult.hasMath,
-          handwritingDetected: parsedResult.hasHandwriting
-        }
       };
 
     } catch (error) {
@@ -149,41 +144,15 @@ export class UnifiedLLMClient {
   /**
    * Build OCR prompt optimized for mathematical content
    */
-  private buildOCRPrompt(type: 'student_answer' | 'professor_answer'): string {
-    return `You are an expert OCR system specialized in extracting text from academic content, particularly mathematical problems and solutions.
-
-Please analyze this image of a ${type.replace('_', ' ')} and extract ALL text content with high accuracy. Pay special attention to:
-
-1. **Mathematical expressions**: Equations, formulas, variables, operators
-2. **Handwritten text**: Both printed and cursive handwriting
-3. **Numerical values**: Numbers, fractions, decimals
-4. **Step-by-step solutions**: Organized problem-solving steps
-5. **Diagrams and labels**: Any text within diagrams or figures
-
-Return your response in this JSON format:
-{
-  "text": "Complete extracted text preserving structure and formatting",
-  "confidence": 0.95,
-  "language": "en",
-  "hasMath": true,
-  "hasHandwriting": false,
-  "textBlocks": [
-    {
-      "text": "Individual text segment",
-      "confidence": 0.98,
-      "type": "text|math|diagram"
-    }
-  ]
-}
-
-Focus on accuracy over speed. If mathematical notation is unclear, provide your best interpretation with a note about uncertainty.`;
+  private buildOCRPrompt(_type: 'student_answer' | 'professor_answer'): string {
+    return `CONSIDER THE IMAGE(S) PROVIDED AND PROVIDE A FLAWLESS MARKDOWN OF THE CONTENT. DO NOT SOLVE OR ANSWER ANY OTHER QUESTION, BUT MAKE SURE THAT THE MARKDOWN FLAWLESSLY RESEMBLES THE CONTENT OF THE IMAGE(S).`;
   }
 
   /**
    * Build grading prompt for GPT-4o mini
    */
   private buildGradingPrompt(studentText: string, professorText: string, rubric?: string): string {
-    return `You are an experienced tutor that is grading the exams of the students. You are only supposed to use the solutions that you are given and are attached below. I want you to give me the exact points that should be awared in the student by FIRST analyzing his answer and SECOND checking them by the grading scheme.
+    return `You are an experienced tutor that is grading the exams of the students. You are only supposed to use the solutions that you are given and are attached below. I want you to give me the exact points that should be awarded in the student by FIRST analyzing his answer and SECOND checking them by the grading scheme.
 
 **MODEL ANSWER**:
 ${professorText}
@@ -195,35 +164,28 @@ ${studentText}`;
   /**
    * Parse OCR response from GPT-4o mini
    */
-  private parseOCRResponse(response: string): {
-    text: string;
-    confidence: number;
-    language: string;
-    hasMath: boolean;
-    hasHandwriting: boolean;
-    textBlocks: any[];
-  } {
-    try {
-      const parsed = JSON.parse(response);
-      return {
-        text: parsed.text || '',
-        confidence: parsed.confidence || 0.8,
-        language: parsed.language || 'en',
-        hasMath: parsed.hasMath || false,
-        hasHandwriting: parsed.hasHandwriting || false,
-        textBlocks: parsed.textBlocks || []
-      };
-    } catch (error) {
-      console.warn('Failed to parse OCR response as JSON, using raw text');
-      return {
-        text: response,
-        confidence: 0.7,
-        language: 'en',
-        hasMath: response.includes('=') || /\d+/.test(response),
-        hasHandwriting: false,
-        textBlocks: [{ text: response, confidence: 0.7, type: 'text' }]
-      };
+  private parseOCRResponse(response: string): string {
+    if (!response) {
+      return '';
     }
+
+    const trimmed = response.trim();
+
+    try {
+      const parsed = JSON.parse(trimmed);
+
+      if (typeof parsed === 'string') {
+        return parsed;
+      }
+
+      if (parsed && typeof parsed.text === 'string') {
+        return parsed.text;
+      }
+    } catch {
+      // Ignore JSON parsing errors; fall through to raw text
+    }
+
+    return trimmed;
   }
 
   /**

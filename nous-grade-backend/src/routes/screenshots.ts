@@ -165,8 +165,7 @@ router.post('/', [
     console.log(`✅ OCR processing completed for ${type}`, {
       confidence: ocrResult.confidence,
       textLength: ocrResult.extractedText.length,
-      processingTime: ocrResult.processingTime,
-      hasMath: ocrResult.metadata.mathContent
+      processingTime: ocrResult.processingTime
     });
 
     // Update processing step as completed
