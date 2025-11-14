@@ -492,10 +492,11 @@ async function handleConvertMultipleImagesToMarkdown(
       const result = await backendAPI.convertImageToMarkdown(request);
       
       if (result.success) {
-        if (studentImages.length > 1) {
-          combinedStudentMarkdown += `## Student Answer - Image ${i + 1}\n\n${result.markdown}\n\n`;
-        } else {
-          combinedStudentMarkdown = result.markdown;
+        const cleaned = result.markdown?.trim() ?? '';
+        if (cleaned) {
+          combinedStudentMarkdown = combinedStudentMarkdown
+            ? `${combinedStudentMarkdown}\n\n${cleaned}`
+            : cleaned;
         }
       } else {
         throw new Error(`Failed to convert student image ${i + 1}: ${result.error}`);
@@ -522,10 +523,11 @@ async function handleConvertMultipleImagesToMarkdown(
       const result = await backendAPI.convertImageToMarkdown(request);
       
       if (result.success) {
-        if (professorImages.length > 1) {
-          combinedProfessorMarkdown += `## Professor Answer - Image ${i + 1}\n\n${result.markdown}\n\n`;
-        } else {
-          combinedProfessorMarkdown = result.markdown;
+        const cleaned = result.markdown?.trim() ?? '';
+        if (cleaned) {
+          combinedProfessorMarkdown = combinedProfessorMarkdown
+            ? `${combinedProfessorMarkdown}\n\n${cleaned}`
+            : cleaned;
         }
       } else {
         throw new Error(`Failed to convert professor image ${i + 1}: ${result.error}`);
