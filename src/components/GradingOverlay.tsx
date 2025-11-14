@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './GradingOverlay.css';
 
 type CaptureType = 'student' | 'professor';
@@ -601,10 +602,6 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
             <div className="floating-panel__body">
               {renderCaptureCard('professor')}
 
-              <div className="panel-status">
-                <p className="status-message">{statusMessage}</p>
-      </div>
-
               {gradingResult && (gradingResult.suggestedGrade || gradingResult.feedback) && (
                 <section className="grading-result">
                   <header className="grading-result__header">
@@ -612,11 +609,11 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
                   </header>
                   <div className="grading-result__body">
                     <div className="grading-result__section">
-                      <p className="grading-result__text">
-                        {gradingResult.suggestedGrade || gradingResult.feedback}
-                      </p>
-            </div>
-            </div>
+                      <ReactMarkdown className="grading-result__markdown">
+                        {gradingResult.suggestedGrade || gradingResult.feedback || ''}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
                 </section>
               )}
               </div>
@@ -644,6 +641,9 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
             <span />
             <span />
           </span>
+        </div>
+        <div className="panel-status draggable-panel-status">
+          <p className="status-message">{statusMessage}</p>
         </div>
         <div className="draggable-action-panel__buttons">
           <button
