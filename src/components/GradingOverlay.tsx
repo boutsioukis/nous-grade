@@ -539,17 +539,17 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
           <div className="markdown-block">
             <p className="markdown-block__label">Extracted text</p>
             {activeMarkdownEditor === captureType ? (
-              <textarea
+            <textarea
                 ref={(node) => {
                   markdownEditorsRef.current[captureType] = node;
                 }}
-                className="markdown-textarea"
-                value={markdownText ?? ''}
-                onChange={(event) => handleMarkdownChange(captureType, event.target.value)}
+              className="markdown-textarea"
+              value={markdownText ?? ''}
+              onChange={(event) => handleMarkdownChange(captureType, event.target.value)}
                 onBlur={() => setActiveMarkdownEditor(null)}
-                placeholder="Review or edit the markdown before grading."
-                rows={8}
-              />
+              placeholder="Review or edit the markdown before grading."
+              rows={8}
+            />
             ) : (
               <div
                 className="markdown-block__preview"
@@ -695,31 +695,31 @@ const GradingOverlay: React.FC<GradingOverlayProps> = ({ onClose }) => {
           <p className="status-message">{statusMessage}</p>
         </div>
         <div className="draggable-action-panel__buttons">
-          <button
-            type="button"
-            className="primary-button"
-            onClick={handleTranslateToMarkdown}
-            disabled={!hasBothCaptures || isConverting || isResetting}
-          >
-            {isConverting ? 'Converting…' : 'Translate to Markdown'}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleStartGrading}
-            disabled={!hasMarkdown || isGrading || isConverting || isResetting}
-          >
-            {isGrading ? 'Grading…' : 'Run Grading'}
-          </button>
-          <button
-            type="button"
-            className="ghost-button ghost-button--danger"
-            onClick={handleNextQuestion}
-            disabled={isResetting}
-          >
-            {isResetting ? 'Preparing…' : 'Next Question'}
-          </button>
-        </div>
+      <button 
+                  type="button"
+                  className="primary-button"
+                  onClick={handleTranslateToMarkdown}
+                  disabled={!hasBothCaptures || isConverting || isResetting}
+      >
+                  {isConverting ? 'Converting…' : 'Translate to Markdown'}
+      </button>
+            <button 
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleStartGrading}
+                  disabled={!hasMarkdown || isGrading || isConverting || isResetting}
+                >
+                  {isGrading ? 'Grading…' : 'Run Grading'}
+            </button>
+            <button 
+                  type="button"
+                  className="ghost-button ghost-button--danger"
+                  onClick={handleNextQuestion}
+                  disabled={isResetting}
+            >
+                  {isResetting ? 'Preparing…' : 'Next Question'}
+            </button>
+          </div>
       </div>
     </div>
   );

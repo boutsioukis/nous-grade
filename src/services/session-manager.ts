@@ -35,9 +35,11 @@ export class SessionManager {
       backendSessionExpiresAt: backendSession.expiresAt ? Date.parse(backendSession.expiresAt) : undefined
     };
 
+    const persistedSession = this.getPersistableSession();
+
     // Store session in Chrome storage
     await chrome.storage.local.set({
-      [`session_${sessionId}`]: this.currentSession,
+      [`session_${sessionId}`]: persistedSession,
       'current_session_id': sessionId
     });
 
@@ -96,10 +98,7 @@ export class SessionManager {
       timestamp: Date.now()
     };
 
-    // Save to storage
-    await chrome.storage.local.set({
-      [`session_${this.currentSession.sessionId}`]: this.currentSession
-    });
+    await this.persistCurrentSession();
 
     console.log('🟢 Session updated:', this.currentSession.sessionId, updates);
   }
@@ -200,6 +199,9 @@ export class SessionManager {
     }
 
     await this.updateSession(updates);
+    await this.removeCaptureFromSessionStorage(type);
+
+    await this.persistCaptureInSessionStorage(type, imageData);
 
     // Update processing state
     const hasStudent = this.currentSession!.studentImageData || type === 'student';
@@ -233,8 +235,10 @@ export class SessionManager {
     const updates: Partial<SessionData> = {};
     if (type === 'student') {
       updates.studentMarkdown = markdown;
+      updates.studentImageData = undefined;
     } else {
       updates.professorMarkdown = markdown;
+      updates.professorImageData = undefined;
     }
 
     await this.updateSession(updates);
@@ -286,10 +290,21 @@ export class SessionManager {
   async clearSession(): Promise<void> {
     await backendAPI.endSession();
 
+    const keysToRemove = new Set<string>(['current_session_id']);
+
     if (this.currentSession) {
-      await chrome.storage.local.remove(`session_${this.currentSession.sessionId}`);
-      await chrome.storage.local.remove('current_session_id');
+      keysToRemove.add(`session_${this.currentSession.sessionId}`);
     }
+
+    const existingEntries = await chrome.storage.local.get();
+    for (const key of Object.keys(existingEntries)) {
+      if (key.startsWith('session_')) {
+        keysToRemove.add(key);
+      }
+    }
+
+    await chrome.storage.local.remove(Array.from(keysToRemove));
+    await this.clearCapturedImagesFromSessionStorage();
 
     this.currentSession = null;
     this.processingState = {
@@ -322,6 +337,51 @@ export class SessionManager {
    */
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private getPersistableSession(): SessionData {
+    if (!this.currentSession) {
+      throw new Error('No active session to persist');
+    }
+
+    const sessionCopy: SessionData = { ...this.currentSession };
+    delete sessionCopy.studentImageData;
+    delete sessionCopy.professorImageData;
+
+    return sessionCopy;
+  }
+
+  private async persistCurrentSession(): Promise<void> {
+    if (!this.currentSession) {
+      return;
+    }
+
+    const sessionToPersist = this.getPersistableSession();
+
+    await chrome.storage.local.set({
+      [`session_${this.currentSession.sessionId}`]: sessionToPersist
+    });
+  }
+
+  private getCaptureSessionKey(type: 'student' | 'professor'): string {
+    return `capture_${type}`;
+  }
+
+  private async persistCaptureInSessionStorage(type: 'student' | 'professor', imageData: string): Promise<void> {
+    await chrome.storage.session.set({
+      [this.getCaptureSessionKey(type)]: imageData
+    });
+  }
+
+  private async removeCaptureFromSessionStorage(type: 'student' | 'professor'): Promise<void> {
+    await chrome.storage.session.remove(this.getCaptureSessionKey(type));
+  }
+
+  private async clearCapturedImagesFromSessionStorage(): Promise<void> {
+    await chrome.storage.session.remove([
+      this.getCaptureSessionKey('student'),
+      this.getCaptureSessionKey('professor')
+    ]);
   }
 
   /**

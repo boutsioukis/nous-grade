@@ -143,7 +143,7 @@ async function checkAIServicesHealth(detailed: boolean = false): Promise<any> {
       status: 'healthy',
       openai: {
         status: process.env.OPENAI_API_KEY ? 'configured' : 'not_configured',
-        model: 'gpt-4o-mini'
+        model: 'gpt-5.1'
       },
       anthropic: {
         status: process.env.ANTHROPIC_API_KEY ? 'configured' : 'not_configured',
@@ -156,7 +156,7 @@ async function checkAIServicesHealth(detailed: boolean = false): Promise<any> {
       return {
         ...baseHealth,
         configuration: {
-          ocrModel: 'gpt-4o-mini',
+          ocrModel: 'gpt-5.1',
           gradingModel: 'claude-3-5-sonnet-20241022',
           feedbackModel: 'claude-3-5-sonnet-20241022'
         },

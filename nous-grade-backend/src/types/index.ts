@@ -57,7 +57,7 @@ export interface OCRResult {
   extractedText: string;
   confidence: number;
   processingTime: number;
-  model: string; // 'gpt-4o-mini'
+  model: string; // 'gpt-5.1'
   processedAt: Date;
 }
 

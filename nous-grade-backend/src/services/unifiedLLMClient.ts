@@ -1,5 +1,5 @@
 // Unified LLM Client for orchestrating different AI models
-// GPT-4o mini for OCR, grading, and feedback
+// GPT-5.1 for OCR, grading, and feedback
 
 import OpenAI from 'openai';
 import { OCRResult, GradingResult, DetailedAnalysis } from '../types';
@@ -7,7 +7,7 @@ import { OCRResult, GradingResult, DetailedAnalysis } from '../types';
 export interface LLMConfig {
   openai: {
     apiKey: string;
-    model: string; // 'gpt-4o-mini' for OCR, grading, and feedback
+    model: string; // 'gpt-5.1' for OCR, grading, and feedback
   };
 }
 
@@ -23,14 +23,14 @@ export class UnifiedLLMClient {
   }
 
   /**
-   * Extract text from image using GPT-4o mini
+   * Extract text from image using GPT-5.1
    * Optimized for mathematical content and handwritten text
    */
   async extractTextFromImage(imageData: string, type: 'student_answer' | 'professor_answer'): Promise<OCRResult> {
     const startTime = Date.now();
     
     try {
-      console.log(`🔍 Starting GPT-4o mini OCR for ${type}`);
+      console.log(`🔍 Starting GPT-5.1 OCR for ${type}`);
       
       const prompt = this.buildOCRPrompt(type);
       
@@ -54,7 +54,7 @@ export class UnifiedLLMClient {
             ]
           }
         ],
-        max_tokens: 2000,
+        max_completion_tokens: 2000,
         temperature: 0.1, // Low temperature for accuracy
       });
 
@@ -65,7 +65,7 @@ export class UnifiedLLMClient {
       const parsedText = this.parseOCRResponse(extractedText);
       const confidenceScore = 0.92;
 
-      console.log(`🔍 GPT-4o mini OCR completed in ${processingTime}ms`);
+      console.log(`🔍 GPT-5.1 OCR completed in ${processingTime}ms`);
       console.log(`🔍 Extracted text length: ${parsedText.length}`);
       console.log(`🔍 Confidence (default): ${confidenceScore}`);
 
@@ -81,13 +81,13 @@ export class UnifiedLLMClient {
       };
 
     } catch (error) {
-      console.error('🔴 GPT-4o mini OCR failed:', error);
+      console.error('🔴 GPT-5.1 OCR failed:', error);
       throw new Error(`OCR processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Grade student answer using GPT-4o mini
+   * Grade student answer using GPT-5.1
    * Provides comprehensive analysis and scoring
    */
   async gradeAnswer(
@@ -98,13 +98,13 @@ export class UnifiedLLMClient {
     const startTime = Date.now();
     
     try {
-      console.log('🎯 Starting GPT-4o mini grading analysis');
+      console.log('🎯 Starting GPT-5.1 grading analysis');
       
       const prompt = this.buildGradingPrompt(studentText, professorText, options.rubric);
       
       const response = await this.openai.chat.completions.create({
         model: this.config.openai.model,
-        max_tokens: 3000,
+        max_completion_tokens: 3000,
         temperature: 0.2, // Low temperature for consistent grading
         messages: [
           {
@@ -120,7 +120,7 @@ export class UnifiedLLMClient {
       // Parse the structured grading response
       const parsedGrading = this.parseGradingResponse(gradingResponse);
 
-      console.log(`🎯 GPT-4o mini grading completed in ${processingTime}ms`);
+      console.log(`🎯 GPT-5.1 grading completed in ${processingTime}ms`);
       console.log(`🎯 Score: ${parsedGrading.score}/${parsedGrading.maxScore}`);
       console.log(`🎯 Confidence: ${parsedGrading.confidence}`);
 
@@ -136,7 +136,7 @@ export class UnifiedLLMClient {
       };
 
     } catch (error) {
-      console.error('🔴 GPT-4o mini grading failed:', error);
+      console.error('🔴 GPT-5.1 grading failed:', error);
       throw new Error(`Grading processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -164,7 +164,7 @@ Strict Guardrail:
   }
 
   /**
-   * Build grading prompt for GPT-4o mini
+   * Build grading prompt for GPT-5.1
    */
   private buildGradingPrompt(studentText: string, professorText: string, rubric?: string): string {
     return `You are an experienced tutor that is grading the exams of the students. You are only supposed to use the solutions that you are given and are attached below. I want you to give me the exact points that should be awarded in the student by FIRST analyzing his answer and SECOND checking them by the grading scheme.
@@ -177,7 +177,7 @@ ${studentText}`;
   }
 
   /**
-   * Parse OCR response from GPT-4o mini
+   * Parse OCR response from GPT-5.1
    */
   private parseOCRResponse(response: string): string {
     if (!response) {
@@ -204,7 +204,7 @@ ${studentText}`;
   }
 
   /**
-   * Parse grading response from GPT-4o mini
+   * Parse grading response from GPT-5.1
    */
   private parseGradingResponse(rawResponse: string): {
     score: number;

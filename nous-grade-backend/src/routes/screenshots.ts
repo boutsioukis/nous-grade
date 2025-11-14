@@ -24,7 +24,7 @@ const router = Router();
 const llmClient = new UnifiedLLMClient({
   openai: {
     apiKey: process.env.OPENAI_API_KEY!,
-    model: 'gpt-4o-mini'
+    model: 'gpt-5.1'
   }
 });
 
@@ -143,7 +143,7 @@ router.post('/', [
             step: `ocr_processing_${type}`,
             status: 'processing',
             startedAt: now,
-            metadata: { screenshotId, model: 'gpt-4o-mini' }
+            metadata: { screenshotId, model: 'gpt-5.1' }
           }
         ]
       }
@@ -151,7 +151,7 @@ router.post('/', [
 
     console.log(`🔍 Starting OCR processing for ${type} screenshot`);
 
-    // Process OCR using GPT-4o mini
+    // Process OCR using GPT-5.1
     const ocrResult = await llmClient.extractTextFromImage(imageData, type as 'student_answer' | 'professor_answer');
     
     // Update OCR result with IDs

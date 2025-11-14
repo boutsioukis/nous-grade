@@ -384,8 +384,8 @@
 }
 
 .ghost-button--danger:hover:not(:disabled) {
-  background: #fee4e2;
-  border-color: #caf966;
+  background: #eaffea;
+  border-color: #9ae07b;
 }
 
 .ghost-button--danger:disabled {

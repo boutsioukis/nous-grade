@@ -237,14 +237,7 @@ async function handleOffscreenCaptureComplete(requestId: string, imageData: stri
     const { tabId, captureType } = requestInfo;
     
     // Store the captured image data
-    await chrome.storage.local.set({
-      [`capture_${captureType}`]: {
-        imageData,
-        timestamp: Date.now(),
-        requestId
-      }
-    });
-    
+    await sessionManager.storeCapturedImage(captureType, imageData);
     console.log(`${captureType} capture data stored successfully`);
     
     // Send success message to the specific tab
@@ -317,15 +310,6 @@ async function handleCaptureCompleteFromPopup(imageData: string, captureType: 's
   try {
     // Store in session manager
     await sessionManager.storeCapturedImage(captureType, imageData);
-
-    // Also store in legacy format for backward compatibility
-    await chrome.storage.local.set({
-      [`capture_${captureType}`]: {
-        imageData,
-        timestamp: Date.now(),
-        source: 'popup'
-      }
-    });
 
     console.log(`🟢 ${captureType} capture data stored successfully`);
 
